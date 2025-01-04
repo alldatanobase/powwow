@@ -160,24 +160,29 @@ namespace TemplateInterpreter
             //// Expect this to throw an error
             //Console.WriteLine(interpreter.Interpret(template8, data8));
 
-            // Example 9: Call length function
-            var template9 = @"{{#if length(myArray) > 0}}has elements{{#else}}no elements{{/if}}";
-            var data9notarray = new ExpandoObject();
-            ((IDictionary<string, object>)data9notarray).Add("myArray", 2.5);
-            var data9 = new ExpandoObject();
-            var itEmployees = new List<ExpandoObject>();
-            var emp1 = new ExpandoObject();
-            ((IDictionary<string, object>)emp1).Add("name", "John");
-            ((IDictionary<string, object>)emp1).Add("salary", 80000);
-            ((IDictionary<string, object>)emp1).Add("isTemp", false);
-            itEmployees.Add(emp1);
-            var emp2 = new ExpandoObject();
-            ((IDictionary<string, object>)emp2).Add("name", "Jane");
-            ((IDictionary<string, object>)emp2).Add("salary", 65000);
-            ((IDictionary<string, object>)emp2).Add("isTemp", false);
-            itEmployees.Add(emp2);
-            ((IDictionary<string, object>)data9).Add("myArray", itEmployees);
-            Console.WriteLine(interpreter.Interpret(template9, data9notarray));
+            //// Example 9: Call length function
+            //var template9 = @"{{length(myArray)}}";
+            //var data9notarray = new ExpandoObject();
+            //((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
+            //var data9 = new ExpandoObject();
+            //var itEmployees = new List<ExpandoObject>();
+            //var emp1 = new ExpandoObject();
+            //((IDictionary<string, object>)emp1).Add("name", "John");
+            //((IDictionary<string, object>)emp1).Add("salary", 80000);
+            //((IDictionary<string, object>)emp1).Add("isTemp", false);
+            //itEmployees.Add(emp1);
+            //var emp2 = new ExpandoObject();
+            //((IDictionary<string, object>)emp2).Add("name", "Jane");
+            //((IDictionary<string, object>)emp2).Add("salary", 65000);
+            //((IDictionary<string, object>)emp2).Add("isTemp", false);
+            //itEmployees.Add(emp2);
+            //((IDictionary<string, object>)data9).Add("myArray", itEmployees);
+            //Console.WriteLine(interpreter.Interpret(template9, data9));
+
+            // Example 10: nested function calls
+            var template10 = @"{{concat(""hello"", concat("" "", ""world""))}}";
+            var data10 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template10, data10));
         }
     }
     public class Interpreter
@@ -678,20 +683,20 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            // Evaluate all arguments first
+            // Evaluate all arguments
             var evaluatedArgs = _arguments.Select(arg => arg.Evaluate(context)).ToList();
 
             // Get function registry
             var registry = context.GetFunctionRegistry();
 
-            // Try to get function definition
-            if (!registry.TryGetFunction(_name, out var function))
+            // Try to get matching function definition
+            if (!registry.TryGetFunction(_name, evaluatedArgs, out var function))
             {
-                throw new Exception($"Function '{_name}' is not registered");
+                throw new Exception($"No matching overload found for function '{_name}' with the provided arguments");
             }
 
             // Validate arguments
-            registry.ValidateArguments(_name, evaluatedArgs);
+            registry.ValidateArguments(function, evaluatedArgs);
 
             // Execute function
             return function.Implementation(evaluatedArgs);
@@ -1297,17 +1302,16 @@ namespace TemplateInterpreter
 
     public class FunctionRegistry
     {
-        private readonly Dictionary<string, FunctionDefinition> _functions;
+        private readonly Dictionary<string, List<FunctionDefinition>> _functions;
 
         public FunctionRegistry()
         {
-            _functions = new Dictionary<string, FunctionDefinition>();
+            _functions = new Dictionary<string, List<FunctionDefinition>>();
             RegisterBuiltInFunctions();
         }
 
         private void RegisterBuiltInFunctions()
         {
-            // Register the length function
             Register("length",
                 new List<Type> { typeof(System.Collections.IEnumerable) },
                 args =>
@@ -1319,51 +1323,176 @@ namespace TemplateInterpreter
                     }
                     return enumerable.Cast<object>().Count();
                 });
+
+            Register("length",
+                new List<Type> { typeof(string) },
+                args =>
+                {
+                    var str = args[0] as string;
+                    if (str == null)
+                    {
+                        throw new Exception("length function requires a string argument");
+                    }
+                    return str.Length;
+                });
+
+            Register("concat",
+                new List<Type> { typeof(string), typeof(string) },
+                args =>
+                {
+                    var str1 = args[0]?.ToString() ?? "";
+                    var str2 = args[1]?.ToString() ?? "";
+                    return str1 + str2;
+                });
         }
 
         public void Register(string name, List<Type> parameterTypes, Func<List<dynamic>, dynamic> implementation)
         {
-            _functions[name] = new FunctionDefinition(name, parameterTypes, implementation);
-        }
+            var definition = new FunctionDefinition(name, parameterTypes, implementation);
 
-        public bool TryGetFunction(string name, out FunctionDefinition function)
-        {
-            return _functions.TryGetValue(name, out function);
-        }
-
-        public bool ValidateArguments(string functionName, List<dynamic> arguments)
-        {
-            if (!_functions.TryGetValue(functionName, out var function))
+            if (!_functions.ContainsKey(name))
             {
-                throw new Exception($"Function '{functionName}' is not registered");
+                _functions[name] = new List<FunctionDefinition>();
             }
 
+            // Check if an identical overload already exists
+            var existingOverload = _functions[name].FirstOrDefault(f =>
+                f.ParameterTypes.Count == parameterTypes.Count &&
+                f.ParameterTypes.Zip(parameterTypes, (a, b) => a == b).All(x => x));
+
+            if (existingOverload != null)
+            {
+                throw new Exception($"Function '{name}' is already registered with the same parameter types");
+            }
+
+            _functions[name].Add(definition);
+        }
+
+        public bool TryGetFunction(string name, List<dynamic> arguments, out FunctionDefinition matchingFunction)
+        {
+            matchingFunction = null;
+
+            if (!_functions.TryGetValue(name, out var overloads))
+            {
+                return false;
+            }
+
+            // Find all overloads with the correct number of parameters
+            var candidateOverloads = overloads.Where(f => f.ParameterTypes.Count == arguments.Count).ToList();
+
+            if (!candidateOverloads.Any())
+            {
+                return false;
+            }
+
+            // Score each overload based on type compatibility
+            var scoredOverloads = candidateOverloads.Select(overload => new
+            {
+                Function = overload,
+                Score = ScoreTypeMatch(overload.ParameterTypes, arguments)
+            })
+                .Where(x => x.Score >= 0) // Filter out incompatible matches
+                .OrderByDescending(x => x.Score)
+                .ToList();
+
+            if (!scoredOverloads.Any())
+            {
+                return false;
+            }
+
+            // If we have multiple matches with the same best score, it's ambiguous
+            if (scoredOverloads.Count > 1 && scoredOverloads[0].Score == scoredOverloads[1].Score)
+            {
+                throw new Exception($"Ambiguous function call to '{name}'. Multiple overloads match the provided arguments.");
+            }
+
+            matchingFunction = scoredOverloads.First().Function;
+            return true;
+        }
+
+        private int ScoreTypeMatch(List<Type> parameterTypes, List<dynamic> arguments)
+        {
+            int totalScore = 0;
+
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var arg = arguments[i];
+                var paramType = parameterTypes[i];
+
+                // Handle null arguments
+                if (arg == null)
+                {
+                    if (!paramType.IsClass) // Value types can't be null
+                    {
+                        return -1;
+                    }
+                    totalScore += 1;
+                    continue;
+                }
+
+                var argType = arg.GetType();
+
+                // Exact type match
+                if (paramType == argType)
+                {
+                    totalScore += 3;
+                    continue;
+                }
+
+                // Special handling for IEnumerable
+                if (paramType == typeof(System.Collections.IEnumerable))
+                {
+                    if (arg is System.Collections.IEnumerable)
+                    {
+                        totalScore += 2;
+                        continue;
+                    }
+                    return -1;
+                }
+
+                // Assignable type match (inheritance)
+                if (paramType.IsAssignableFrom(argType))
+                {
+                    totalScore += 2;
+                    continue;
+                }
+
+                return -1; // No valid conversion possible
+            }
+
+            return totalScore;
+        }
+
+        public void ValidateArguments(FunctionDefinition function, List<dynamic> arguments)
+        {
             if (arguments.Count != function.ParameterTypes.Count)
             {
-                throw new Exception($"Function '{functionName}' expects {function.ParameterTypes.Count} arguments, but got {arguments.Count}");
+                throw new Exception($"Function '{function.Name}' expects {function.ParameterTypes.Count} arguments, but got {arguments.Count}");
             }
 
             for (int i = 0; i < arguments.Count; i++)
             {
-                var argumentType = arguments[i]?.GetType();
+                var argument = arguments[i];
                 var expectedType = function.ParameterTypes[i];
 
                 // Handle null arguments
-                if (arguments[i] == null)
+                if (argument == null)
                 {
-                    if (!expectedType.IsClass) // Value types can't be null
+                    if (!expectedType.IsClass)
                     {
-                        throw new Exception($"Argument {i + 1} of function '{functionName}' cannot be null");
+                        throw new Exception($"Argument {i + 1} of function '{function.Name}' cannot be null");
                     }
                     continue;
                 }
 
+                var argumentType = argument.GetType();
+
                 // Special handling for IEnumerable parameter type
                 if (expectedType == typeof(System.Collections.IEnumerable))
                 {
-                    if (!(arguments[i] is System.Collections.IEnumerable))
+                    if (!(argument is System.Collections.IEnumerable))
                     {
-                        throw new Exception($"Argument {i + 1} of function '{functionName}' must be an array or collection");
+                        throw new Exception($"Argument {i + 1} of function '{function.Name}' must be an array or collection");
                     }
                     continue;
                 }
@@ -1371,11 +1500,9 @@ namespace TemplateInterpreter
                 // Check if the argument can be converted to the expected type
                 if (!expectedType.IsAssignableFrom(argumentType))
                 {
-                    throw new Exception($"Argument {i + 1} of function '{functionName}' must be of type {expectedType.Name}");
+                    throw new Exception($"Argument {i + 1} of function '{function.Name}' must be of type {expectedType.Name}");
                 }
             }
-
-            return true;
         }
     }
 }
