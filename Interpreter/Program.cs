@@ -184,10 +184,51 @@ namespace TemplateInterpreter
             //var data10 = new ExpandoObject();
             //Console.WriteLine(interpreter.Interpret(template10, data10));
 
-            // Example 11: temporary concat with optional param
-            var template11 = @"{{concat(""Hello"", ""World"")}}\n{{concat(""Hello"", ""World"", "", "")}}";
-            var data11 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template11, data11));
+            // Example 11: string functions
+            //            var template11 = @"
+            //{{contains(""Hello World"", ""World"")}}        // Returns true
+            //{{startsWith(""Hello World"", ""Hello"")}}      // Returns true
+            //{{endsWith(""Hello World"", ""World"")}}        // Returns true
+            //{{toUpper(""Hello World"")}}                  // Returns ""HELLO WORLD""
+            //{{toLower(""Hello World"")}}                  // Returns ""hello world""
+            //{{trim(""  Hello World  "")}}                 // Returns ""Hello World""
+            //{{indexOf(""Hello World"", ""World"")}}         // Returns 6
+            //{{lastIndexOf(""Hello World World"", ""World"")}} // Returns 12
+            //{{substring(""Hello World"", 6)}}             // Returns ""World""
+            //{{substring(""Hello World"", 0, 5)}}             // Returns ""Hello""
+            //";
+            //            var data11 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data11).Add("var1", "Hello World");
+            //            Console.WriteLine(interpreter.Interpret(template11, data11));
+
+            // Example 12: multiple string function calls
+            //var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
+            //var data12 = new ExpandoObject();
+            //((IDictionary<string, object>)data12).Add("var1", "Hello World");
+            //Console.WriteLine(interpreter.Interpret(template12, data12));
+
+            // Example 13: overloaded contains functions
+            var template13 = @"
+{{contains(""Hello World"", ""World"")}}     // true
+{{contains(""Hello World"", ""foo"")}}     // false
+{{contains(user, ""firstName"")}} // true
+{{contains(user, ""age"")}}       // false
+{{contains(person, ""name"")}}    // true
+{{contains(person, ""age"")}}     // false
+{{contains(dict, ""key"")}}       // true
+{{contains(dict, ""missing"")}}   // false";
+            // Regular objects
+            var user = new { firstName = "John", lastName = "Doe" };
+            // Dynamic objects
+            dynamic person = new ExpandoObject();
+            person.name = "John";
+            // Dictionary objects
+            var dict = new Dictionary<string, object> { ["key"] = "value" };
+            var data13 = new ExpandoObject();
+            ((IDictionary<string, object>)data13).Add("user", user);
+            ((IDictionary<string, object>)data13).Add("person", person);
+            ((IDictionary<string, object>)data13).Add("dict", dict);
+            Console.WriteLine(interpreter.Interpret(template13, data13));
         }
     }
     public class Interpreter
@@ -1372,6 +1413,150 @@ namespace TemplateInterpreter
                     var str1 = args[0]?.ToString() ?? "";
                     var str2 = args[1]?.ToString() ?? "";
                     return str1 + str2;
+                });
+
+            Register("contains",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var searchStr = args[1]?.ToString() ?? "";
+                    return str.Contains(searchStr);
+                });
+
+            Register("contains",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(object)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    if (args[0] == null)
+                        return false;
+
+                    var obj = args[0];
+                    var propertyName = args[1]?.ToString() ?? "";
+
+                    // Handle ExpandoObject separately
+                    if (obj is ExpandoObject)
+                    {
+                        return ((IDictionary<string, object>)obj).ContainsKey(propertyName);
+                    }
+
+                    // Handle dictionary types
+                    if (obj is IDictionary<string, object> dict)
+                    {
+                        return dict.ContainsKey(propertyName);
+                    }
+
+                    // For regular objects, check if the property exists
+                    var type = obj.GetType();
+                    var propertyExists = type.GetProperty(propertyName) != null;
+
+                    return propertyExists;
+                });
+
+            Register("startsWith",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var searchStr = args[1]?.ToString() ?? "";
+                    return str.StartsWith(searchStr);
+                });
+
+            Register("endsWith",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var searchStr = args[1]?.ToString() ?? "";
+                    return str.EndsWith(searchStr);
+                });
+
+            Register("toUpper",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    return str.ToUpper();
+                });
+
+            Register("toLower",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    return str.ToLower();
+                });
+
+            Register("trim",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    return str.Trim();
+                });
+
+            Register("indexOf",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var searchStr = args[1]?.ToString() ?? "";
+                    return new decimal(str.IndexOf(searchStr));
+                });
+
+            Register("lastIndexOf",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var searchStr = args[1]?.ToString() ?? "";
+                    return new decimal(str.LastIndexOf(searchStr));
+                });
+
+            Register("substring",
+                new List<ParameterDefinition> {
+                new ParameterDefinition(typeof(string)),
+                new ParameterDefinition(typeof(decimal)),
+                new ParameterDefinition(typeof(decimal), true, new decimal(-1)) // Optional end index
+                },
+                args =>
+                {
+                    var str = args[0]?.ToString() ?? "";
+                    var startIndex = Convert.ToInt32(args[1]);
+                    var endIndex = Convert.ToInt32(args[2]);
+
+                    // If end index is provided, use it; otherwise substring to the end
+                    if (endIndex >= 0)
+                    {
+                        var length = endIndex - startIndex;
+                        return str.Substring(startIndex, length);
+                    }
+
+                    return str.Substring(startIndex);
                 });
         }
 
