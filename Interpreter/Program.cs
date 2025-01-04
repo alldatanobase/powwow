@@ -208,29 +208,43 @@ namespace TemplateInterpreter
             //Console.WriteLine(interpreter.Interpret(template12, data12));
 
             // Example 13: overloaded contains functions
-            var template13 = @"
-{{contains(""Hello World"", ""World"")}}     // true
-{{contains(""Hello World"", ""foo"")}}     // false
-{{contains(user, ""firstName"")}} // true
-{{contains(user, ""age"")}}       // false
-{{contains(person, ""name"")}}    // true
-{{contains(person, ""age"")}}     // false
-{{contains(dict, ""key"")}}       // true
-{{contains(dict, ""missing"")}}   // false";
-            // Regular objects
-            var user = new { firstName = "John", lastName = "Doe" };
-            // Dynamic objects
-            dynamic person = new ExpandoObject();
-            person.name = "John";
-            // Dictionary objects
-            var dict = new Dictionary<string, object> { ["key"] = "value" };
-            var data13 = new ExpandoObject();
-            ((IDictionary<string, object>)data13).Add("user", user);
-            ((IDictionary<string, object>)data13).Add("person", person);
-            ((IDictionary<string, object>)data13).Add("dict", dict);
-            Console.WriteLine(interpreter.Interpret(template13, data13));
+            //            var template13 = @"
+            //{{contains(""Hello World"", ""World"")}}     // true
+            //{{contains(""Hello World"", ""foo"")}}     // false
+            //{{contains(user, ""firstName"")}} // true
+            //{{contains(user, ""age"")}}       // false
+            //{{contains(person, ""name"")}}    // true
+            //{{contains(person, ""age"")}}     // false
+            //{{contains(dict, ""key"")}}       // true
+            //{{contains(dict, ""missing"")}}   // false";
+            //            // Regular objects
+            //            var user = new { firstName = "John", lastName = "Doe" };
+            //            // Dynamic objects
+            //            dynamic person = new ExpandoObject();
+            //            person.name = "John";
+            //            // Dictionary objects
+            //            var dict = new Dictionary<string, object> { ["key"] = "value" };
+            //            var data13 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data13).Add("user", user);
+            //            ((IDictionary<string, object>)data13).Add("person", person);
+            //            ((IDictionary<string, object>)data13).Add("dict", dict);
+            //            Console.WriteLine(interpreter.Interpret(template13, data13));
+
+            // Example 14: lambda function
+            var template14 = @"{{#if length(filter(users, {x => x.age > 17})) > 0}}has adults{{#else}}no adults{{/if}}";
+            var data14 = new ExpandoObject();
+            var users = new List<ExpandoObject>();
+            var emp1 = new ExpandoObject();
+            ((IDictionary<string, object>)emp1).Add("age", "17");
+            users.Add(emp1);
+            var emp2 = new ExpandoObject();
+            ((IDictionary<string, object>)emp2).Add("age", "15");
+            users.Add(emp2);
+            ((IDictionary<string, object>)data14).Add("users", users);
+            Console.WriteLine(interpreter.Interpret(template14, data14));
         }
     }
+
     public class Interpreter
     {
         private readonly Lexer _lexer;
@@ -286,7 +300,12 @@ namespace TemplateInterpreter
             return _functionRegistry;
         }
 
-        public dynamic ResolveValue(string path)
+        public dynamic GetData()
+        {
+            return _data;
+        }
+
+        public virtual dynamic ResolveValue(string path)
         {
             var parts = path.Split('.');
             dynamic current = null;
@@ -321,6 +340,57 @@ namespace TemplateInterpreter
             }
 
             return current;
+        }
+    }
+
+    public class LambdaExecutionContext : ExecutionContext
+    {
+        private readonly ExecutionContext _parentContext;
+        private readonly Dictionary<string, dynamic> _parameters;
+
+        public LambdaExecutionContext(
+            ExecutionContext parentContext,
+            List<string> parameterNames,
+            List<dynamic> parameterValues)
+            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry())
+        {
+            _parentContext = parentContext;
+            _parameters = new Dictionary<string, dynamic>();
+
+            // Map parameter names to values
+            for (int i = 0; i < parameterNames.Count; i++)
+            {
+                _parameters[parameterNames[i]] = parameterValues[i];
+            }
+        }
+
+        public override dynamic ResolveValue(string path)
+        {
+            var parts = path.Split('.');
+
+            // First check if it's a parameter
+            if (_parameters.ContainsKey(parts[0]))
+            {
+                dynamic current = _parameters[parts[0]];
+
+                // Handle nested property access for parameters
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    try
+                    {
+                        current = ((IDictionary<string, object>)current)[parts[i]];
+                    }
+                    catch
+                    {
+                        throw new Exception($"Unable to resolve path: {path}");
+                    }
+                }
+
+                return current;
+            }
+
+            // If not found in parameters, delegate to parent context
+            return _parentContext.ResolveValue(path);
         }
     }
 
@@ -371,7 +441,11 @@ namespace TemplateInterpreter
         EndEach,           // /each
         EndIf,             // /if
         Function,          // function name
-        Comma              // ,
+        Comma,             // ,
+        Arrow,             // =>
+        LambdaStart,       // {
+        LambdaEnd,         // }
+        Parameter          // lambda parameter name
     }
 
     public class Lexer
@@ -425,6 +499,27 @@ namespace TemplateInterpreter
                 if (TryMatch(","))
                 {
                     _tokens.Add(new Token(TokenType.Comma, ",", _position));
+                    _position++;
+                    continue;
+                }
+
+                if (TryMatch("=>"))
+                {
+                    _tokens.Add(new Token(TokenType.Arrow, "=>", _position));
+                    _position += 2;
+                    continue;
+                }
+
+                if (TryMatch("{"))
+                {
+                    _tokens.Add(new Token(TokenType.LambdaStart, "{", _position));
+                    _position++;
+                    continue;
+                }
+
+                if (TryMatch("}"))
+                {
+                    _tokens.Add(new Token(TokenType.LambdaEnd, "}", _position));
                     _position++;
                     continue;
                 }
@@ -746,6 +841,30 @@ namespace TemplateInterpreter
 
             // Execute function with effective arguments (including defaults for optional parameters)
             return function.Implementation(effectiveArgs);
+        }
+    }
+
+    public class LambdaNode : AstNode
+    {
+        private readonly List<string> _parameters;
+        private readonly AstNode _expression;
+
+        public LambdaNode(List<string> parameters, AstNode expression)
+        {
+            _parameters = parameters;
+            _expression = expression;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            // Return a delegate that can be called later with parameters
+            // Context is captured here, during evaluation, not during parsing
+            return new Func<List<dynamic>, dynamic>(args =>
+            {
+                // Create a new context that includes both captured context and new parameters
+                var lambdaContext = new LambdaExecutionContext(context, _parameters, args);
+                return _expression.Evaluate(lambdaContext);
+            });
         }
     }
 
@@ -1077,6 +1196,39 @@ namespace TemplateInterpreter
             return new FunctionNode(functionName, arguments);
         }
 
+        private AstNode ParseLambda()
+        {
+            Advance(); // Skip {
+
+            var parameters = new List<string>();
+
+            // Parse parameters
+            while (Current().Type == TokenType.Variable || Current().Type == TokenType.Parameter)
+            {
+                parameters.Add(Current().Value);
+                Advance();
+
+                if (Current().Type == TokenType.Comma)
+                {
+                    Advance();
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            Expect(TokenType.Arrow);
+            Advance(); // Skip =>
+
+            var expression = ParseExpression();
+
+            Expect(TokenType.LambdaEnd);
+            Advance(); // Skip }
+
+            return new LambdaNode(parameters, expression);
+        }
+
         private AstNode ParseIfStatement()
         {
             var conditionalBranches = new List<IfNode.IfBranch>();
@@ -1262,6 +1414,9 @@ namespace TemplateInterpreter
 
             switch (token.Type)
             {
+                case TokenType.LambdaStart:
+                    return ParseLambda();
+
                 case TokenType.Function:
                     return ParseFunctionCall();
 
@@ -1417,8 +1572,8 @@ namespace TemplateInterpreter
 
             Register("contains",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1429,8 +1584,8 @@ namespace TemplateInterpreter
 
             Register("contains",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(object)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(object)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1461,8 +1616,8 @@ namespace TemplateInterpreter
 
             Register("startsWith",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1473,8 +1628,8 @@ namespace TemplateInterpreter
 
             Register("endsWith",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1485,7 +1640,7 @@ namespace TemplateInterpreter
 
             Register("toUpper",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1495,7 +1650,7 @@ namespace TemplateInterpreter
 
             Register("toLower",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1505,7 +1660,7 @@ namespace TemplateInterpreter
 
             Register("trim",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1515,8 +1670,8 @@ namespace TemplateInterpreter
 
             Register("indexOf",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1527,8 +1682,8 @@ namespace TemplateInterpreter
 
             Register("lastIndexOf",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
                 },
                 args =>
                 {
@@ -1539,9 +1694,9 @@ namespace TemplateInterpreter
 
             Register("substring",
                 new List<ParameterDefinition> {
-                new ParameterDefinition(typeof(string)),
-                new ParameterDefinition(typeof(decimal)),
-                new ParameterDefinition(typeof(decimal), true, new decimal(-1)) // Optional end index
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(decimal)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(-1)) // Optional end index
                 },
                 args =>
                 {
@@ -1557,6 +1712,34 @@ namespace TemplateInterpreter
                     }
 
                     return str.Substring(startIndex);
+                });
+
+            Register("filter",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(Func<List<dynamic>, dynamic>))
+                },
+                args =>
+                {
+                    var collection = args[0] as System.Collections.IEnumerable;
+                    var predicate = args[1] as Func<List<dynamic>, dynamic>;
+
+                    if (collection == null || predicate == null)
+                    {
+                        throw new Exception("filter function requires an array and a lambda function");
+                    }
+
+                    var result = new List<dynamic>();
+                    foreach (var item in collection)
+                    {
+                        var predicateResult = predicate(new List<dynamic> { item });
+                        if (Convert.ToBoolean(predicateResult))
+                        {
+                            result.Add(item);
+                        }
+                    }
+
+                    return result;
                 });
         }
 
