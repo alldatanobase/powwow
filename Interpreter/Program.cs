@@ -141,17 +141,24 @@ namespace TemplateInterpreter
             //*/
             //Console.WriteLine(interpreter.Interpret(template6, data6));
 
-            // Example 7: Arbitrarily deep variable path reference
-            var template7 = @"{{var1.foo.bar.baz}}";
-            var data7 = new ExpandoObject();
-            var data7Nested = new ExpandoObject();
-            var data7DoubleNested = new ExpandoObject();
-            var data7TripleNested = new ExpandoObject();
-            ((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
-            ((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
-            ((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
-            ((IDictionary<string, object>)data7).Add("var1", data7Nested);
-            Console.WriteLine(interpreter.Interpret(template7, data7));
+            //// Example 7: Arbitrarily deep variable path reference
+            //var template7 = @"{{var1.foo.bar.baz}}";
+            //var data7 = new ExpandoObject();
+            //var data7Nested = new ExpandoObject();
+            //var data7DoubleNested = new ExpandoObject();
+            //var data7TripleNested = new ExpandoObject();
+            //((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
+            //((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
+            //((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
+            //((IDictionary<string, object>)data7).Add("var1", data7Nested);
+            //Console.WriteLine(interpreter.Interpret(template7, data7));
+
+            // Example 8: Call function
+            var template8 = @"Here is a function: {{myfunction()}}
+                Here is a function with args: {{calculate(1 + 2, var1)}}";
+            var data8 = new ExpandoObject();
+            ((IDictionary<string, object>)data8).Add("var1", "foo");
+            Console.WriteLine(interpreter.Interpret(template8, data8));
         }
     }
     public class Interpreter
@@ -216,8 +223,8 @@ namespace TemplateInterpreter
                 try
                 {
                     current = ((IDictionary<string, object>)current)[part];
-                    if (current.GetType() == typeof(int) || 
-                        current.GetType() == typeof(double) || 
+                    if (current.GetType() == typeof(int) ||
+                        current.GetType() == typeof(double) ||
                         current.GetType() == typeof(float))
                     {
                         current = (decimal)current;
@@ -278,7 +285,9 @@ namespace TemplateInterpreter
         ElseIf,            // #elseif
         Else,              // #else
         EndEach,           // /each
-        EndIf              // /if
+        EndIf,             // /if
+        Function,          // function name
+        Comma              // ,
     }
 
     public class Lexer
@@ -326,6 +335,39 @@ namespace TemplateInterpreter
                     _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
                     _position += 2;
                     return;
+                }
+
+                // Add check for comma
+                if (TryMatch(","))
+                {
+                    _tokens.Add(new Token(TokenType.Comma, ",", _position));
+                    _position++;
+                    continue;
+                }
+
+                // Check for function names before other identifiers
+                if (char.IsLetter(_input[_position]))
+                {
+                    var start = _position;
+                    while (_position < _input.Length && char.IsLetter(_input[_position]))
+                    {
+                        _position++;
+                    }
+
+                    var value = _input.Substring(start, _position - start);
+
+                    // Look ahead for opening parenthesis to distinguish functions from variables
+                    SkipWhitespace();
+                    if (_position < _input.Length && _input[_position] == '(')
+                    {
+                        _tokens.Add(new Token(TokenType.Function, value, start));
+                        continue;
+                    }
+                    else
+                    {
+                        // Rewind position as this is not a function
+                        _position = start;
+                    }
                 }
 
                 // Match keywords and operators
@@ -505,8 +547,8 @@ namespace TemplateInterpreter
                 _position++;
             }
 
-            while (_position < _input.Length && 
-                   (char.IsDigit(_input[_position]) || 
+            while (_position < _input.Length &&
+                   (char.IsDigit(_input[_position]) ||
                     (!hasDecimal && _input[_position] == '.')))
             {
                 if (_input[_position] == '.')
@@ -523,9 +565,9 @@ namespace TemplateInterpreter
         private void TokenizeIdentifier()
         {
             var start = _position;
-            while (_position < _input.Length && 
-                   (char.IsLetterOrDigit(_input[_position]) || 
-                    _input[_position] == '_' || 
+            while (_position < _input.Length &&
+                   (char.IsLetterOrDigit(_input[_position]) ||
+                    _input[_position] == '_' ||
                     _input[_position] == '.'))
             {
                 _position++;
@@ -587,6 +629,27 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _text;
+        }
+    }
+
+    public class FunctionNode : AstNode
+    {
+        private readonly string _name;
+        private readonly List<AstNode> _arguments;
+
+        public FunctionNode(string name, List<AstNode> arguments)
+        {
+            _name = name;
+            _arguments = arguments;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            // Evaluate all arguments first
+            var evaluatedArgs = _arguments.Select(arg => arg.Evaluate(context)).ToList();
+
+            // For now, return "hello world" as specified
+            return "hello world";
         }
     }
 
@@ -838,7 +901,7 @@ namespace TemplateInterpreter
             while (_position < _tokens.Count)
             {
                 var token = Current();
-                
+
                 if (token.Type == TokenType.Text)
                 {
                     nodes.Add(new TextNode(token.Value));
@@ -856,8 +919,8 @@ namespace TemplateInterpreter
                     {
                         nodes.Add(ParseEachStatement());
                     }
-                    else if (nextToken.Type == TokenType.ElseIf || 
-                             nextToken.Type == TokenType.Else || 
+                    else if (nextToken.Type == TokenType.ElseIf ||
+                             nextToken.Type == TokenType.Else ||
                              nextToken.Type == TokenType.EndIf ||
                              nextToken.Type == TokenType.EndEach)
                     {
@@ -887,6 +950,37 @@ namespace TemplateInterpreter
             return expression;
         }
 
+        private AstNode ParseFunctionCall()
+        {
+            var functionName = Current().Value;
+            Advance(); // Move past function name
+
+            Expect(TokenType.LeftParen);
+            Advance(); // Move past left paren
+
+            var arguments = new List<AstNode>();
+
+            // Parse arguments
+            if (Current().Type != TokenType.RightParen)
+            {
+                while (true)
+                {
+                    arguments.Add(ParseExpression());
+
+                    if (Current().Type == TokenType.RightParen)
+                        break;
+
+                    Expect(TokenType.Comma);
+                    Advance(); // Move past comma
+                }
+            }
+
+            Expect(TokenType.RightParen);
+            Advance(); // Move past right paren
+
+            return new FunctionNode(functionName, arguments);
+        }
+
         private AstNode ParseIfStatement()
         {
             var conditionalBranches = new List<IfNode.IfBranch>();
@@ -898,7 +992,7 @@ namespace TemplateInterpreter
             var condition = ParseExpression();
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
-            
+
             var body = ParseTemplate();
             conditionalBranches.Add(new IfNode.IfBranch(condition, body));
 
@@ -950,14 +1044,14 @@ namespace TemplateInterpreter
             Advance(); // Skip #each
             var iteratorName = Expect(TokenType.Variable).Value;
             Advance();
-            
+
             Expect(TokenType.In);
             Advance();
 
             var collection = ParseExpression();
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
-            
+
             var body = ParseTemplate();
 
             // Handle the closing each tag
@@ -1025,7 +1119,7 @@ namespace TemplateInterpreter
         {
             var left = ParseMultiplicative();
 
-            while (_position < _tokens.Count && 
+            while (_position < _tokens.Count &&
                    (Current().Type == TokenType.Plus || Current().Type == TokenType.Minus))
             {
                 var op = Current().Type;
@@ -1041,7 +1135,7 @@ namespace TemplateInterpreter
         {
             var left = ParseUnary();
 
-            while (_position < _tokens.Count && 
+            while (_position < _tokens.Count &&
                    (Current().Type == TokenType.Multiply || Current().Type == TokenType.Divide))
             {
                 var op = Current().Type;
@@ -1072,6 +1166,9 @@ namespace TemplateInterpreter
 
             switch (token.Type)
             {
+                case TokenType.Function:
+                    return ParseFunctionCall();
+
                 case TokenType.Variable:
                     Advance();
                     return new VariableNode(token.Value);
