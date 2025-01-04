@@ -153,30 +153,56 @@ namespace TemplateInterpreter
             //((IDictionary<string, object>)data7).Add("var1", data7Nested);
             //Console.WriteLine(interpreter.Interpret(template7, data7));
 
-            // Example 8: Call function
-            var template8 = @"Here is a function: {{myfunction()}}
-                Here is a function with args: {{calculate(1 + 2, var1)}}";
-            var data8 = new ExpandoObject();
-            ((IDictionary<string, object>)data8).Add("var1", "foo");
-            Console.WriteLine(interpreter.Interpret(template8, data8));
+            //// Example 8: Call non-existent function
+            //var template8 = @"Here is a function: {{myfunction()}}";
+            //var data8 = new ExpandoObject();
+            //((IDictionary<string, object>)data8).Add("var1", "foo");
+            //// Expect this to throw an error
+            //Console.WriteLine(interpreter.Interpret(template8, data8));
+
+            // Example 9: Call length function
+            var template9 = @"{{#if length(myArray) > 0}}has elements{{#else}}no elements{{/if}}";
+            var data9notarray = new ExpandoObject();
+            ((IDictionary<string, object>)data9notarray).Add("myArray", 2.5);
+            var data9 = new ExpandoObject();
+            var itEmployees = new List<ExpandoObject>();
+            var emp1 = new ExpandoObject();
+            ((IDictionary<string, object>)emp1).Add("name", "John");
+            ((IDictionary<string, object>)emp1).Add("salary", 80000);
+            ((IDictionary<string, object>)emp1).Add("isTemp", false);
+            itEmployees.Add(emp1);
+            var emp2 = new ExpandoObject();
+            ((IDictionary<string, object>)emp2).Add("name", "Jane");
+            ((IDictionary<string, object>)emp2).Add("salary", 65000);
+            ((IDictionary<string, object>)emp2).Add("isTemp", false);
+            itEmployees.Add(emp2);
+            ((IDictionary<string, object>)data9).Add("myArray", itEmployees);
+            Console.WriteLine(interpreter.Interpret(template9, data9notarray));
         }
     }
     public class Interpreter
     {
         private readonly Lexer _lexer;
         private readonly Parser _parser;
+        private readonly FunctionRegistry _functionRegistry;
 
         public Interpreter()
         {
             _lexer = new Lexer();
             _parser = new Parser();
+            _functionRegistry = new FunctionRegistry();
+        }
+
+        public void RegisterFunction(string name, List<Type> parameterTypes, Func<List<dynamic>, dynamic> implementation)
+        {
+            _functionRegistry.Register(name, parameterTypes, implementation);
         }
 
         public string Interpret(string template, dynamic data)
         {
             var tokens = _lexer.Tokenize(template);
             var ast = _parser.Parse(tokens);
-            return ast.Evaluate(new ExecutionContext(data));
+            return ast.Evaluate(new ExecutionContext(data, _functionRegistry));
         }
     }
 
@@ -184,22 +210,29 @@ namespace TemplateInterpreter
     {
         private readonly dynamic _data;
         private readonly Dictionary<string, dynamic> _iteratorValues;
+        private readonly FunctionRegistry _functionRegistry;
 
-        public ExecutionContext(dynamic data)
+        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry)
         {
             _data = data;
             _iteratorValues = new Dictionary<string, dynamic>();
+            _functionRegistry = functionRegistry;
         }
 
         public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value)
         {
-            var newContext = new ExecutionContext(_data);
+            var newContext = new ExecutionContext(_data, _functionRegistry);
             newContext._iteratorValues.Add(iteratorName, value);
             foreach (var key in _iteratorValues.Keys)
             {
                 newContext._iteratorValues.Add(key, _iteratorValues[key]);
             }
             return newContext;
+        }
+
+        public FunctionRegistry GetFunctionRegistry()
+        {
+            return _functionRegistry;
         }
 
         public dynamic ResolveValue(string path)
@@ -648,8 +681,20 @@ namespace TemplateInterpreter
             // Evaluate all arguments first
             var evaluatedArgs = _arguments.Select(arg => arg.Evaluate(context)).ToList();
 
-            // For now, return "hello world" as specified
-            return "hello world";
+            // Get function registry
+            var registry = context.GetFunctionRegistry();
+
+            // Try to get function definition
+            if (!registry.TryGetFunction(_name, out var function))
+            {
+                throw new Exception($"Function '{_name}' is not registered");
+            }
+
+            // Validate arguments
+            registry.ValidateArguments(_name, evaluatedArgs);
+
+            // Execute function
+            return function.Implementation(evaluatedArgs);
         }
     }
 
@@ -1233,6 +1278,104 @@ namespace TemplateInterpreter
                 throw new Exception(string.Format("Expected {0} but got {1} at position {2}", type, token.Type, token.Position));
             }
             return token;
+        }
+    }
+
+    public class FunctionDefinition
+    {
+        public string Name { get; }
+        public List<Type> ParameterTypes { get; }
+        public Func<List<dynamic>, dynamic> Implementation { get; }
+
+        public FunctionDefinition(string name, List<Type> parameterTypes, Func<List<dynamic>, dynamic> implementation)
+        {
+            Name = name;
+            ParameterTypes = parameterTypes;
+            Implementation = implementation;
+        }
+    }
+
+    public class FunctionRegistry
+    {
+        private readonly Dictionary<string, FunctionDefinition> _functions;
+
+        public FunctionRegistry()
+        {
+            _functions = new Dictionary<string, FunctionDefinition>();
+            RegisterBuiltInFunctions();
+        }
+
+        private void RegisterBuiltInFunctions()
+        {
+            // Register the length function
+            Register("length",
+                new List<Type> { typeof(System.Collections.IEnumerable) },
+                args =>
+                {
+                    var enumerable = args[0] as System.Collections.IEnumerable;
+                    if (enumerable == null)
+                    {
+                        throw new Exception("length function requires an enumerable argument");
+                    }
+                    return enumerable.Cast<object>().Count();
+                });
+        }
+
+        public void Register(string name, List<Type> parameterTypes, Func<List<dynamic>, dynamic> implementation)
+        {
+            _functions[name] = new FunctionDefinition(name, parameterTypes, implementation);
+        }
+
+        public bool TryGetFunction(string name, out FunctionDefinition function)
+        {
+            return _functions.TryGetValue(name, out function);
+        }
+
+        public bool ValidateArguments(string functionName, List<dynamic> arguments)
+        {
+            if (!_functions.TryGetValue(functionName, out var function))
+            {
+                throw new Exception($"Function '{functionName}' is not registered");
+            }
+
+            if (arguments.Count != function.ParameterTypes.Count)
+            {
+                throw new Exception($"Function '{functionName}' expects {function.ParameterTypes.Count} arguments, but got {arguments.Count}");
+            }
+
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                var argumentType = arguments[i]?.GetType();
+                var expectedType = function.ParameterTypes[i];
+
+                // Handle null arguments
+                if (arguments[i] == null)
+                {
+                    if (!expectedType.IsClass) // Value types can't be null
+                    {
+                        throw new Exception($"Argument {i + 1} of function '{functionName}' cannot be null");
+                    }
+                    continue;
+                }
+
+                // Special handling for IEnumerable parameter type
+                if (expectedType == typeof(System.Collections.IEnumerable))
+                {
+                    if (!(arguments[i] is System.Collections.IEnumerable))
+                    {
+                        throw new Exception($"Argument {i + 1} of function '{functionName}' must be an array or collection");
+                    }
+                    continue;
+                }
+
+                // Check if the argument can be converted to the expected type
+                if (!expectedType.IsAssignableFrom(argumentType))
+                {
+                    throw new Exception($"Argument {i + 1} of function '{functionName}' must be of type {expectedType.Name}");
+                }
+            }
+
+            return true;
         }
     }
 }
