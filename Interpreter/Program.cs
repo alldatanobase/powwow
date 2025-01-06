@@ -230,34 +230,40 @@ namespace TemplateInterpreter
             //            ((IDictionary<string, object>)data13).Add("dict", dict);
             //            Console.WriteLine(interpreter.Interpret(template13, data13));
 
-            // Example 14: lambda function
-            var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
-            var data14 = new ExpandoObject();
-            var users = new List<ExpandoObject>();
-            var emp1 = new ExpandoObject();
-            var locs1 = new List<ExpandoObject>();
-            var loc1a = new ExpandoObject();
-            var loc1b = new ExpandoObject();
-            ((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
-            ((IDictionary<string, object>)loc1b).Add("name", "Denver");
-            locs1.Add(loc1a);
-            locs1.Add(loc1b);
-            ((IDictionary<string, object>)emp1).Add("age", "17");
-            ((IDictionary<string, object>)emp1).Add("loc", locs1);
-            users.Add(emp1);
-            var emp2 = new ExpandoObject();
-            var locs2 = new List<ExpandoObject>();
-            var loc2a = new ExpandoObject();
-            var loc2b = new ExpandoObject();
-            ((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
-            ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
-            locs2.Add(loc2a);
-            locs2.Add(loc2b);
-            ((IDictionary<string, object>)emp2).Add("age", "21");
-            ((IDictionary<string, object>)emp2).Add("loc", locs2);
-            users.Add(emp2);
-            ((IDictionary<string, object>)data14).Add("users", users);
-            Console.WriteLine(interpreter.Interpret(template14, data14));
+            //// Example 14: lambda function
+            //var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
+            //var data14 = new ExpandoObject();
+            //var users = new List<ExpandoObject>();
+            //var emp1 = new ExpandoObject();
+            //var locs1 = new List<ExpandoObject>();
+            //var loc1a = new ExpandoObject();
+            //var loc1b = new ExpandoObject();
+            //((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
+            //((IDictionary<string, object>)loc1b).Add("name", "Denver");
+            //locs1.Add(loc1a);
+            //locs1.Add(loc1b);
+            //((IDictionary<string, object>)emp1).Add("age", "17");
+            //((IDictionary<string, object>)emp1).Add("loc", locs1);
+            //users.Add(emp1);
+            //var emp2 = new ExpandoObject();
+            //var locs2 = new List<ExpandoObject>();
+            //var loc2a = new ExpandoObject();
+            //var loc2b = new ExpandoObject();
+            //((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
+            //((IDictionary<string, object>)loc2b).Add("name", "Decatur");
+            //locs2.Add(loc2a);
+            //locs2.Add(loc2b);
+            //((IDictionary<string, object>)emp2).Add("age", "21");
+            //((IDictionary<string, object>)emp2).Add("loc", locs2);
+            //users.Add(emp2);
+            //((IDictionary<string, object>)data14).Add("users", users);
+            //Console.WriteLine(interpreter.Interpret(template14, data14));
+
+            // Example 15: objects
+            var template15 = @"{{obj(name: ""John"", age: 30).name}}
+{{obj(person: obj(name: ""John"", age: 30), active: true).person.age}}";
+            var data15 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template15, data15));
         }
     }
 
@@ -459,7 +465,9 @@ namespace TemplateInterpreter
         Function,          // function name
         Comma,             // ,
         Arrow,             // =>
-        Parameter          // lambda parameter name
+        Parameter,         // lambda parameter name
+        ObjectStart,       // obj(
+        Colon,             // :
     }
 
     public class Lexer
@@ -521,6 +529,20 @@ namespace TemplateInterpreter
                 {
                     _tokens.Add(new Token(TokenType.Arrow, "=>", _position));
                     _position += 2;
+                    continue;
+                }
+
+                if (TryMatch("obj("))
+                {
+                    _tokens.Add(new Token(TokenType.ObjectStart, "obj(", _position));
+                    _position += 4;
+                    continue;
+                }
+
+                if (TryMatch(":"))
+                {
+                    _tokens.Add(new Token(TokenType.Colon, ":", _position));
+                    _position++;
                     continue;
                 }
 
@@ -865,6 +887,29 @@ namespace TemplateInterpreter
                 var lambdaContext = new LambdaExecutionContext(context, _parameters, args);
                 return _expression.Evaluate(lambdaContext);
             });
+        }
+    }
+
+    public class ObjectCreationNode : AstNode
+    {
+        private readonly List<KeyValuePair<string, AstNode>> _fields;
+
+        public ObjectCreationNode(List<KeyValuePair<string, AstNode>> fields)
+        {
+            _fields = fields;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            var obj = new ExpandoObject();
+            var dict = obj as IDictionary<string, object>;
+
+            foreach (var field in _fields)
+            {
+                dict[field.Key] = field.Value.Evaluate(context);
+            }
+
+            return obj;
         }
     }
 
@@ -1244,6 +1289,57 @@ namespace TemplateInterpreter
             return new LambdaNode(parameters, expression);
         }
 
+        private AstNode ParseObjectCreation()
+        {
+            Advance(); // Skip obj(
+
+            var fields = new List<KeyValuePair<string, AstNode>>();
+
+            while (_position < _tokens.Count && Current().Type != TokenType.RightParen)
+            {
+                // Parse field name
+                if (Current().Type != TokenType.Variable)
+                {
+                    throw new Exception($"Expected field name but got {Current().Type} at position {Current().Position}");
+                }
+
+                var fieldName = Current().Value;
+                Advance();
+
+                // Parse colon
+                if (Current().Type != TokenType.Colon)
+                {
+                    throw new Exception($"Expected ':' but got {Current().Type} at position {Current().Position}");
+                }
+                Advance();
+
+                // Parse field value expression
+                var fieldValue = ParseExpression();
+
+                fields.Add(new KeyValuePair<string, AstNode>(fieldName, fieldValue));
+
+                // If there's a comma, skip it and continue
+                if (Current().Type == TokenType.Comma)
+                {
+                    Advance();
+                }
+                // If there's a right paren, we're done
+                else if (Current().Type == TokenType.RightParen)
+                {
+                    break;
+                }
+                else
+                {
+                    throw new Exception($"Expected ',' or ')' but got {Current().Type} at position {Current().Position}");
+                }
+            }
+
+            Expect(TokenType.RightParen);
+            Advance(); // Skip )
+
+            return new ObjectCreationNode(fields);
+        }
+
         private AstNode ParseIfStatement()
         {
             var conditionalBranches = new List<IfNode.IfBranch>();
@@ -1429,6 +1525,9 @@ namespace TemplateInterpreter
 
             switch (token.Type)
             {
+                case TokenType.ObjectStart:
+                    return ParseObjectCreation();
+
                 case TokenType.LeftParen:
                     // Store current position so we can backtrack if needed
                     var pos = _position;
