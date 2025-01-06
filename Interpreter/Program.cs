@@ -13,257 +13,268 @@ namespace TemplateInterpreter
             // Create the interpreter
             var interpreter = new TemplateInterpreter.Interpreter();
 
-            // Example 1: Complex arithmetic with parentheses
-            var template1 = "Result: {{(5 * (var2 + 1.5)) / 2}}";
-            var data1 = new ExpandoObject();
-            ((IDictionary<string, object>)data1).Add("var2", 2.5);
-            // Result: 10 (calculates (5 * (2.5 + 1.5)) / 2 = (5 * 4) / 2 = 20 / 2 = 10)
-            Console.WriteLine(interpreter.Interpret(template1, data1));
+            //// Example 1: Complex arithmetic with parentheses
+            //var template1 = "Result: {{(5 * (var2 + 1.5)) / 2}}";
+            //var data1 = new ExpandoObject();
+            //((IDictionary<string, object>)data1).Add("var2", 2.5);
+            //// Result: 10 (calculates (5 * (2.5 + 1.5)) / 2 = (5 * 4) / 2 = 20 / 2 = 10)
+            //Console.WriteLine(interpreter.Interpret(template1, data1));
 
-            // Example 2: Complex boolean logic with parentheses
-            var template2 = "Is valid: {{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}}";
-            var data2 = new ExpandoObject();
-            var data2Dict = (IDictionary<string, object>)data2;
-            data2Dict.Add("var1", "test");
-            data2Dict.Add("var2", 2.5);
-            var nested = new ExpandoObject();
-            ((IDictionary<string, object>)nested).Add("x", 1.5);
-            data2Dict.Add("var3", nested);
-            // Is valid: false (negation of (true && (true || false)) = negation of true = false)
-            Console.WriteLine(interpreter.Interpret(template2, data2));
+            //// Example 2: Complex boolean logic with parentheses
+            //var template2 = "Is valid: {{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}}";
+            //var data2 = new ExpandoObject();
+            //var data2Dict = (IDictionary<string, object>)data2;
+            //data2Dict.Add("var1", "test");
+            //data2Dict.Add("var2", 2.5);
+            //var nested = new ExpandoObject();
+            //((IDictionary<string, object>)nested).Add("x", 1.5);
+            //data2Dict.Add("var3", nested);
+            //// Is valid: false (negation of (true && (true || false)) = negation of true = false)
+            //Console.WriteLine(interpreter.Interpret(template2, data2));
 
-            // Example 3: Nested if statements with complex conditions
-            var template3 = @"
-            {{#if var1 = ""test""}}
-                Outer if true
-                {{#if var2 * 2 >= 5}}
-                    Inner if also true
-                {{#else}}
-                    Inner if false
-                {{/if}}
-            {{#else}}
-                Outer if false
-            {{/if}}";
-            // Output: Outer if true\n    Inner if true
-            Console.WriteLine(interpreter.Interpret(template3, data2));
+            //// Example 3: Nested if statements with complex conditions
+            //var template3 = @"
+            //{{#if var1 = ""test""}}
+            //    Outer if true
+            //    {{#if var2 * 2 >= 5}}
+            //        Inner if also true
+            //    {{#else}}
+            //        Inner if false
+            //    {{/if}}
+            //{{#else}}
+            //    Outer if false
+            //{{/if}}";
+            //// Output: Outer if true\n    Inner if true
+            //Console.WriteLine(interpreter.Interpret(template3, data2));
 
-            // Example 4: Each statement with complex condition inside
-            var template4 = @"
-            Users with high scores:
-            {{#each user in users}}
-                {{#if user.score > 80 && (user.age < 18 || user.region = ""EU"")}}
-                    {{user.name}} ({{user.score}})
-                {{/if}}
-            {{/each}}";
+            //// Example 4: Each statement with complex condition inside
+            //var template4 = @"
+            //Users with high scores:
+            //{{#each user in users}}
+            //    {{#if user.score > 80 && (user.age < 18 || user.region = ""EU"")}}
+            //        {{user.name}} ({{user.score}})
+            //    {{/if}}
+            //{{/each}}";
 
-            var data4 = new ExpandoObject();
-            var usersList = new List<ExpandoObject>();
-            // Create user 1
-            var user1 = new ExpandoObject();
-            var user1Dict = (IDictionary<string, object>)user1;
-            user1Dict.Add("name", "Alice");
-            user1Dict.Add("score", 90);
-            user1Dict.Add("age", 18);
-            user1Dict.Add("region", "US");
-            usersList.Add(user1);
-            // Create user 2
-            var user2 = new ExpandoObject();
-            var user2Dict = (IDictionary<string, object>)user2;
-            user2Dict.Add("name", "Bob");
-            user2Dict.Add("score", 85);
-            user2Dict.Add("age", 25);
-            user2Dict.Add("region", "EU");
-            usersList.Add(user2);
-            // Add users to data
-            ((IDictionary<string, object>)data4).Add("users", usersList);
-            // Output: Users with high scores:\n    Alice (90)\n    Bob (85)
-            Console.WriteLine(interpreter.Interpret(template4, data4));
+            //var data4 = new ExpandoObject();
+            //var usersList = new List<ExpandoObject>();
+            //// Create user 1
+            //var user1 = new ExpandoObject();
+            //var user1Dict = (IDictionary<string, object>)user1;
+            //user1Dict.Add("name", "Alice");
+            //user1Dict.Add("score", 90);
+            //user1Dict.Add("age", 18);
+            //user1Dict.Add("region", "US");
+            //usersList.Add(user1);
+            //// Create user 2
+            //var user2 = new ExpandoObject();
+            //var user2Dict = (IDictionary<string, object>)user2;
+            //user2Dict.Add("name", "Bob");
+            //user2Dict.Add("score", 85);
+            //user2Dict.Add("age", 25);
+            //user2Dict.Add("region", "EU");
+            //usersList.Add(user2);
+            //// Add users to data
+            //((IDictionary<string, object>)data4).Add("users", usersList);
+            //// Output: Users with high scores:\n    Alice (90)\n    Bob (85)
+            //Console.WriteLine(interpreter.Interpret(template4, data4));
 
-            ////Example 5: Complex mathematical and logical expressions combined
-            var template5 = @"
-            Math result: {{ (var1 * 2 + var2) / var3.x }}
-            Logic result: {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }}
-            ";
-            var data5 = new ExpandoObject();
-            var data5Dict = (IDictionary<string, object>)data5;
-            data5Dict.Add("var1", 3);
-            data5Dict.Add("var2", 2.5);
-            var nested5 = new ExpandoObject();
-            ((IDictionary<string, object>)nested5).Add("x", 2);
-            data5Dict.Add("var3", nested5);
-            ///* Output:
-            //Math result: 4.25 ((3 * 2 + 2.5) / 2 = 8.5 / 2 = 4.25)
-            //Logic result: false (((3 > 2.5) = (2 < 5)) && !(2.5 = 2.5) = (true = true) && !true = true && false = false)
-            //*/
-            Console.WriteLine(interpreter.Interpret(template5, data5));
+            //////Example 5: Complex mathematical and logical expressions combined
+            //var template5 = @"
+            //Math result: {{ (var1 * 2 + var2) / var3.x }}
+            //Logic result: {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }}
+            //";
+            //var data5 = new ExpandoObject();
+            //var data5Dict = (IDictionary<string, object>)data5;
+            //data5Dict.Add("var1", 3);
+            //data5Dict.Add("var2", 2.5);
+            //var nested5 = new ExpandoObject();
+            //((IDictionary<string, object>)nested5).Add("x", 2);
+            //data5Dict.Add("var3", nested5);
+            /////* Output:
+            ////Math result: 4.25 ((3 * 2 + 2.5) / 2 = 8.5 / 2 = 4.25)
+            ////Logic result: false (((3 > 2.5) = (2 < 5)) && !(2.5 = 2.5) = (true = true) && !true = true && false = false)
+            ////*/
+            //Console.WriteLine(interpreter.Interpret(template5, data5));
 
-            // Example 6: Nested each statements with conditionals
-            var template6 = @"
-            {{#each department in departments}}
-            Department: {{department.name}}
-                {{#each employee in department.employees}}
-                    {{#if employee.salary > department.avgSalary && !employee.isTemp}}
-                        {{employee.name}} (Senior)
-                    {{#elseif employee.salary > department.avgSalary * 0.8}}
-                        {{employee.name}} (Mid-level)
-                    {{#else}}
-                        {{employee.name}} (Junior)
-                    {{/if}}
-                {{/each}}
-            {{/each}}";
+            //// Example 6: Nested each statements with conditionals
+            //var template6 = @"
+            //{{#each department in departments}}
+            //Department: {{department.name}}
+            //    {{#each employee in department.employees}}
+            //        {{#if employee.salary > department.avgSalary && !employee.isTemp}}
+            //            {{employee.name}} (Senior)
+            //        {{#elseif employee.salary > department.avgSalary * 0.8}}
+            //            {{employee.name}} (Mid-level)
+            //        {{#else}}
+            //            {{employee.name}} (Junior)
+            //        {{/if}}
+            //    {{/each}}
+            //{{/each}}";
 
-            var data6 = new ExpandoObject();
-            var deptList = new List<ExpandoObject>();
-            // Create IT department
-            var itDept = new ExpandoObject();
-            var itDeptDict = (IDictionary<string, object>)itDept;
-            itDeptDict.Add("name", "IT");
-            itDeptDict.Add("avgSalary", 75000);
-            var itEmployees = new List<ExpandoObject>();
-            // Add IT employees
-            var emp1 = new ExpandoObject();
-            ((IDictionary<string, object>)emp1).Add("name", "John");
-            ((IDictionary<string, object>)emp1).Add("salary", 80000);
-            ((IDictionary<string, object>)emp1).Add("isTemp", false);
-            itEmployees.Add(emp1);
-            var emp2 = new ExpandoObject();
-            ((IDictionary<string, object>)emp2).Add("name", "Jane");
-            ((IDictionary<string, object>)emp2).Add("salary", 65000);
-            ((IDictionary<string, object>)emp2).Add("isTemp", false);
-            itEmployees.Add(emp2);
-            itDeptDict.Add("employees", itEmployees);
-            deptList.Add(itDept);
-            ((IDictionary<string, object>)data6).Add("departments", deptList);
-            ///* Output:
-            //Department: IT
-            //    John (Senior)
-            //    Jane (Mid-level)
-            //*/
-            Console.WriteLine(interpreter.Interpret(template6, data6));
+            //var data6 = new ExpandoObject();
+            //var deptList = new List<ExpandoObject>();
+            //// Create IT department
+            //var itDept = new ExpandoObject();
+            //var itDeptDict = (IDictionary<string, object>)itDept;
+            //itDeptDict.Add("name", "IT");
+            //itDeptDict.Add("avgSalary", 75000);
+            //var itEmployees = new List<ExpandoObject>();
+            //// Add IT employees
+            //var emp1 = new ExpandoObject();
+            //((IDictionary<string, object>)emp1).Add("name", "John");
+            //((IDictionary<string, object>)emp1).Add("salary", 80000);
+            //((IDictionary<string, object>)emp1).Add("isTemp", false);
+            //itEmployees.Add(emp1);
+            //var emp2 = new ExpandoObject();
+            //((IDictionary<string, object>)emp2).Add("name", "Jane");
+            //((IDictionary<string, object>)emp2).Add("salary", 65000);
+            //((IDictionary<string, object>)emp2).Add("isTemp", false);
+            //itEmployees.Add(emp2);
+            //itDeptDict.Add("employees", itEmployees);
+            //deptList.Add(itDept);
+            //((IDictionary<string, object>)data6).Add("departments", deptList);
+            /////* Output:
+            ////Department: IT
+            ////    John (Senior)
+            ////    Jane (Mid-level)
+            ////*/
+            //Console.WriteLine(interpreter.Interpret(template6, data6));
 
-            // Example 7: Arbitrarily deep variable path reference
-            var template7 = @"{{var1.foo.bar.baz}}";
-            var data7 = new ExpandoObject();
-            var data7Nested = new ExpandoObject();
-            var data7DoubleNested = new ExpandoObject();
-            var data7TripleNested = new ExpandoObject();
-            ((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
-            ((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
-            ((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
-            ((IDictionary<string, object>)data7).Add("var1", data7Nested);
-            Console.WriteLine(interpreter.Interpret(template7, data7));
+            //// Example 7: Arbitrarily deep variable path reference
+            //var template7 = @"{{var1.foo.bar.baz}}";
+            //var data7 = new ExpandoObject();
+            //var data7Nested = new ExpandoObject();
+            //var data7DoubleNested = new ExpandoObject();
+            //var data7TripleNested = new ExpandoObject();
+            //((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
+            //((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
+            //((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
+            //((IDictionary<string, object>)data7).Add("var1", data7Nested);
+            //Console.WriteLine(interpreter.Interpret(template7, data7));
 
-            // Example 8: Call non-existent function
-            //var template8 = @"Here is a function: {{myfunction()}}";
-            //var data8 = new ExpandoObject();
-            //((IDictionary<string, object>)data8).Add("var1", "foo");
-            //// Expect this to throw an error
-            //Console.WriteLine(interpreter.Interpret(template8, data8));
+            //// Example 8: Call non-existent function
+            ////var template8 = @"Here is a function: {{myfunction()}}";
+            ////var data8 = new ExpandoObject();
+            ////((IDictionary<string, object>)data8).Add("var1", "foo");
+            ////// Expect this to throw an error
+            ////Console.WriteLine(interpreter.Interpret(template8, data8));
 
-            // Example 9: Call length function
-            var template9 = @"{{length(myArray)}}";
-            var data9notarray = new ExpandoObject();
-            ((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
-            var data9 = new ExpandoObject();
-            var itEmployees1 = new List<ExpandoObject>();
-            var empa1 = new ExpandoObject();
-            ((IDictionary<string, object>)empa1).Add("name", "John");
-            ((IDictionary<string, object>)empa1).Add("salary", 80000);
-            ((IDictionary<string, object>)empa1).Add("isTemp", false);
-            itEmployees1.Add(empa1);
-            var empa2 = new ExpandoObject();
-            ((IDictionary<string, object>)empa2).Add("name", "Jane");
-            ((IDictionary<string, object>)empa2).Add("salary", 65000);
-            ((IDictionary<string, object>)empa2).Add("isTemp", false);
-            itEmployees1.Add(empa2);
-            ((IDictionary<string, object>)data9).Add("myArray", itEmployees1);
-            Console.WriteLine(interpreter.Interpret(template9, data9));
+            //// Example 9: Call length function
+            //var template9 = @"{{length(myArray)}}";
+            //var data9notarray = new ExpandoObject();
+            //((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
+            //var data9 = new ExpandoObject();
+            //var itEmployees1 = new List<ExpandoObject>();
+            //var empa1 = new ExpandoObject();
+            //((IDictionary<string, object>)empa1).Add("name", "John");
+            //((IDictionary<string, object>)empa1).Add("salary", 80000);
+            //((IDictionary<string, object>)empa1).Add("isTemp", false);
+            //itEmployees1.Add(empa1);
+            //var empa2 = new ExpandoObject();
+            //((IDictionary<string, object>)empa2).Add("name", "Jane");
+            //((IDictionary<string, object>)empa2).Add("salary", 65000);
+            //((IDictionary<string, object>)empa2).Add("isTemp", false);
+            //itEmployees1.Add(empa2);
+            //((IDictionary<string, object>)data9).Add("myArray", itEmployees1);
+            //Console.WriteLine(interpreter.Interpret(template9, data9));
 
-            // Example 10: nested function calls
-            var template10 = @"{{concat(""hello"", concat("" "", ""world""))}}";
-            var data10 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template10, data10));
+            //// Example 10: nested function calls
+            //var template10 = @"{{concat(""hello"", concat("" "", ""world""))}}";
+            //var data10 = new ExpandoObject();
+            //Console.WriteLine(interpreter.Interpret(template10, data10));
 
-            //Example 11: string functions
-                        var template11 = @"
-            {{contains(""Hello World"", ""World"")}}        // Returns true
-            {{startsWith(""Hello World"", ""Hello"")}}      // Returns true
-            {{endsWith(""Hello World"", ""World"")}}        // Returns true
-            {{toUpper(""Hello World"")}}                  // Returns ""HELLO WORLD""
-            {{toLower(""Hello World"")}}                  // Returns ""hello world""
-            {{trim(""  Hello World  "")}}                 // Returns ""Hello World""
-            {{indexOf(""Hello World"", ""World"")}}         // Returns 6
-            {{lastIndexOf(""Hello World World"", ""World"")}} // Returns 12
-            {{substring(""Hello World"", 6)}}             // Returns ""World""
-            {{substring(""Hello World"", 0, 5)}}             // Returns ""Hello""
-            ";
-            var data11 = new ExpandoObject();
-            ((IDictionary<string, object>)data11).Add("var1", "Hello World");
-            Console.WriteLine(interpreter.Interpret(template11, data11));
+            ////Example 11: string functions
+            //var template11 = @"
+            //{{contains(""Hello World"", ""World"")}}        // Returns true
+            //{{startsWith(""Hello World"", ""Hello"")}}      // Returns true
+            //{{endsWith(""Hello World"", ""World"")}}        // Returns true
+            //{{toUpper(""Hello World"")}}                  // Returns ""HELLO WORLD""
+            //{{toLower(""Hello World"")}}                  // Returns ""hello world""
+            //{{trim(""  Hello World  "")}}                 // Returns ""Hello World""
+            //{{indexOf(""Hello World"", ""World"")}}         // Returns 6
+            //{{lastIndexOf(""Hello World World"", ""World"")}} // Returns 12
+            //{{substring(""Hello World"", 6)}}             // Returns ""World""
+            //{{substring(""Hello World"", 0, 5)}}             // Returns ""Hello""
+            //";
+            //var data11 = new ExpandoObject();
+            //((IDictionary<string, object>)data11).Add("var1", "Hello World");
+            //Console.WriteLine(interpreter.Interpret(template11, data11));
 
-            //Example 12: multiple string function calls
-           var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
-            var data12 = new ExpandoObject();
-            ((IDictionary<string, object>)data12).Add("var1", "Hello World");
-            Console.WriteLine(interpreter.Interpret(template12, data12));
+            ////Example 12: multiple string function calls
+            //var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
+            //var data12 = new ExpandoObject();
+            //((IDictionary<string, object>)data12).Add("var1", "Hello World");
+            //Console.WriteLine(interpreter.Interpret(template12, data12));
 
-            //Example 13: overloaded contains functions
-                       var template13 = @"
-            {{contains(""Hello World"", ""World"")}}     // true
-            {{contains(""Hello World"", ""foo"")}}     // false
-            {{contains(user, ""firstName"")}} // true
-            {{contains(user, ""age"")}}       // false
-            {{contains(person, ""name"")}}    // true
-            {{contains(person, ""age"")}}     // false
-            {{contains(dict, ""key"")}}       // true
-            {{contains(dict, ""missing"")}}   // false";
-            // Regular objects
-            var user = new { firstName = "John", lastName = "Doe" };
-            // Dynamic objects
-            dynamic person = new ExpandoObject();
-            person.name = "John";
-            // Dictionary objects
-            var dict = new Dictionary<string, object> { ["key"] = "value" };
-            var data13 = new ExpandoObject();
-            ((IDictionary<string, object>)data13).Add("user", user);
-            ((IDictionary<string, object>)data13).Add("person", person);
-            ((IDictionary<string, object>)data13).Add("dict", dict);
-            Console.WriteLine(interpreter.Interpret(template13, data13));
+            ////Example 13: overloaded contains functions
+            //var template13 = @"
+            //{{contains(""Hello World"", ""World"")}}     // true
+            //{{contains(""Hello World"", ""foo"")}}     // false
+            //{{contains(user, ""firstName"")}} // true
+            //{{contains(user, ""age"")}}       // false
+            //{{contains(person, ""name"")}}    // true
+            //{{contains(person, ""age"")}}     // false
+            //{{contains(dict, ""key"")}}       // true
+            //{{contains(dict, ""missing"")}}   // false";
+            //// Regular objects
+            //var user = new { firstName = "John", lastName = "Doe" };
+            //// Dynamic objects
+            //dynamic person = new ExpandoObject();
+            //person.name = "John";
+            //// Dictionary objects
+            //var dict = new Dictionary<string, object> { ["key"] = "value" };
+            //var data13 = new ExpandoObject();
+            //((IDictionary<string, object>)data13).Add("user", user);
+            //((IDictionary<string, object>)data13).Add("person", person);
+            //((IDictionary<string, object>)data13).Add("dict", dict);
+            //Console.WriteLine(interpreter.Interpret(template13, data13));
 
-            // Example 14: lambda function
-            var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
-            var data14 = new ExpandoObject();
-            var users = new List<ExpandoObject>();
-            var empx1 = new ExpandoObject();
-            var locs1 = new List<ExpandoObject>();
-            var loc1a = new ExpandoObject();
-            var loc1b = new ExpandoObject();
-            ((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
-            ((IDictionary<string, object>)loc1b).Add("name", "Denver");
-            locs1.Add(loc1a);
-            locs1.Add(loc1b);
-            ((IDictionary<string, object>)empx1).Add("age", "17");
-            ((IDictionary<string, object>)empx1).Add("loc", locs1);
-            users.Add(empx1);
-            var empx2 = new ExpandoObject();
-            var locs2 = new List<ExpandoObject>();
-            var loc2a = new ExpandoObject();
-            var loc2b = new ExpandoObject();
-            ((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
-            ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
-            locs2.Add(loc2a);
-            locs2.Add(loc2b);
-            ((IDictionary<string, object>)empx2).Add("age", "21");
-            ((IDictionary<string, object>)empx2).Add("loc", locs2);
-            users.Add(empx2);
-            ((IDictionary<string, object>)data14).Add("users", users);
-            Console.WriteLine(interpreter.Interpret(template14, data14));
+            //// Example 14: lambda function
+            //var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
+            //var data14 = new ExpandoObject();
+            //var users = new List<ExpandoObject>();
+            //var empx1 = new ExpandoObject();
+            //var locs1 = new List<ExpandoObject>();
+            //var loc1a = new ExpandoObject();
+            //var loc1b = new ExpandoObject();
+            //((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
+            //((IDictionary<string, object>)loc1b).Add("name", "Denver");
+            //locs1.Add(loc1a);
+            //locs1.Add(loc1b);
+            //((IDictionary<string, object>)empx1).Add("age", "17");
+            //((IDictionary<string, object>)empx1).Add("loc", locs1);
+            //users.Add(empx1);
+            //var empx2 = new ExpandoObject();
+            //var locs2 = new List<ExpandoObject>();
+            //var loc2a = new ExpandoObject();
+            //var loc2b = new ExpandoObject();
+            //((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
+            //((IDictionary<string, object>)loc2b).Add("name", "Decatur");
+            //locs2.Add(loc2a);
+            //locs2.Add(loc2b);
+            //((IDictionary<string, object>)empx2).Add("age", "21");
+            //((IDictionary<string, object>)empx2).Add("loc", locs2);
+            //users.Add(empx2);
+            //((IDictionary<string, object>)data14).Add("users", users);
+            //Console.WriteLine(interpreter.Interpret(template14, data14));
 
-            //Example 15: objects
-            var template15 = @"{{obj(name: ""John"", age: 30).name}}
-            {{obj(person: obj(name: ""John"", age: 30), active: true).person.age}}";
-            var data15 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template15, data15));
+            ////Example 15: objects
+            //var template15 = @"{{obj(name: ""John"", age: 30).name}}
+            //{{obj(person: obj(name: ""John"", age: 30), active: true).person.age}}";
+            //var data15 = new ExpandoObject();
+            //Console.WriteLine(interpreter.Interpret(template15, data15));
+
+            //Example 16: arrays
+            var template16 = @"
+{{#each x in []}}{{x}}, {{/each}}
+{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}}
+{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}}
+{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}}
+{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}}
+{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}}";
+            var data16 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template16, data16));
         }
     }
 
@@ -467,7 +478,9 @@ namespace TemplateInterpreter
         ObjectStart,       // obj(
         Colon,             // :
         Dot,               // .
-        Field              // object field name
+        Field,             // object field name
+        LeftBracket,       // [
+        RightBracket       // ]
     }
 
     public class Lexer
@@ -549,6 +562,20 @@ namespace TemplateInterpreter
                 if (TryMatch("."))
                 {
                     _tokens.Add(new Token(TokenType.Dot, ".", _position));
+                    _position++;
+                    continue;
+                }
+
+                if (TryMatch("["))
+                {
+                    _tokens.Add(new Token(TokenType.LeftBracket, "[", _position));
+                    _position++;
+                    continue;
+                }
+
+                if (TryMatch("]"))
+                {
+                    _tokens.Add(new Token(TokenType.RightBracket, "]", _position));
                     _position++;
                     continue;
                 }
@@ -983,6 +1010,21 @@ namespace TemplateInterpreter
         }
     }
 
+    public class ArrayNode : AstNode
+    {
+        private readonly List<AstNode> _elements;
+
+        public ArrayNode(List<AstNode> elements)
+        {
+            _elements = elements;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            return _elements.Select(element => element.Evaluate(context)).ToList();
+        }
+    }
+
     public class VariableNode : AstNode
     {
         private readonly string _path;
@@ -1410,6 +1452,41 @@ namespace TemplateInterpreter
             return new ObjectCreationNode(fields);
         }
 
+        private AstNode ParseArrayCreation()
+        {
+            Advance(); // Skip [
+
+            var elements = new List<AstNode>();
+
+            // Handle empty array case
+            if (Current().Type == TokenType.RightBracket)
+            {
+                Advance(); // Skip ]
+                return new ArrayNode(elements);
+            }
+
+            // Parse array elements
+            while (true)
+            {
+                elements.Add(ParseExpression());
+
+                if (Current().Type == TokenType.RightBracket)
+                {
+                    Advance(); // Skip ]
+                    break;
+                }
+
+                if (Current().Type != TokenType.Comma)
+                {
+                    throw new Exception($"Expected ',' or ']' but got {Current().Type} at position {Current().Position}");
+                }
+
+                Advance(); // Skip comma
+            }
+
+            return new ArrayNode(elements);
+        }
+
         private AstNode ParseIfStatement()
         {
             var conditionalBranches = new List<IfNode.IfBranch>();
@@ -1596,6 +1673,10 @@ namespace TemplateInterpreter
 
             switch (token.Type)
             {
+                case TokenType.LeftBracket:
+                    expr = ParseArrayCreation();
+                    break;
+
                 case TokenType.ObjectStart:
                     expr = ParseObjectCreation();
                     break;
