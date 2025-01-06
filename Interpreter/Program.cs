@@ -231,14 +231,30 @@ namespace TemplateInterpreter
             //            Console.WriteLine(interpreter.Interpret(template13, data13));
 
             // Example 14: lambda function
-            var template14 = @"{{#if length(filter(users, {x => x.age > 17})) > 0}}has adults{{#else}}no adults{{/if}}";
+            var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
             var data14 = new ExpandoObject();
             var users = new List<ExpandoObject>();
             var emp1 = new ExpandoObject();
+            var locs1 = new List<ExpandoObject>();
+            var loc1a = new ExpandoObject();
+            var loc1b = new ExpandoObject();
+            ((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
+            ((IDictionary<string, object>)loc1b).Add("name", "Denver");
+            locs1.Add(loc1a);
+            locs1.Add(loc1b);
             ((IDictionary<string, object>)emp1).Add("age", "17");
+            ((IDictionary<string, object>)emp1).Add("loc", locs1);
             users.Add(emp1);
             var emp2 = new ExpandoObject();
-            ((IDictionary<string, object>)emp2).Add("age", "15");
+            var locs2 = new List<ExpandoObject>();
+            var loc2a = new ExpandoObject();
+            var loc2b = new ExpandoObject();
+            ((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
+            ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
+            locs2.Add(loc2a);
+            locs2.Add(loc2b);
+            ((IDictionary<string, object>)emp2).Add("age", "21");
+            ((IDictionary<string, object>)emp2).Add("loc", locs2);
             users.Add(emp2);
             ((IDictionary<string, object>)data14).Add("users", users);
             Console.WriteLine(interpreter.Interpret(template14, data14));
@@ -443,8 +459,6 @@ namespace TemplateInterpreter
         Function,          // function name
         Comma,             // ,
         Arrow,             // =>
-        LambdaStart,       // {
-        LambdaEnd,         // }
         Parameter          // lambda parameter name
     }
 
@@ -507,20 +521,6 @@ namespace TemplateInterpreter
                 {
                     _tokens.Add(new Token(TokenType.Arrow, "=>", _position));
                     _position += 2;
-                    continue;
-                }
-
-                if (TryMatch("{"))
-                {
-                    _tokens.Add(new Token(TokenType.LambdaStart, "{", _position));
-                    _position++;
-                    continue;
-                }
-
-                if (TryMatch("}"))
-                {
-                    _tokens.Add(new Token(TokenType.LambdaEnd, "}", _position));
-                    _position++;
                     continue;
                 }
 
@@ -1165,6 +1165,15 @@ namespace TemplateInterpreter
             return expression;
         }
 
+        private AstNode ParseGroupExpression()
+        {
+            Advance(); // Skip (
+            var expression = ParseExpression();
+            Expect(TokenType.RightParen);
+            Advance(); // Skip )
+            return expression;
+        }
+
         private AstNode ParseFunctionCall()
         {
             var functionName = Current().Value;
@@ -1198,33 +1207,39 @@ namespace TemplateInterpreter
 
         private AstNode ParseLambda()
         {
-            Advance(); // Skip {
+            Expect(TokenType.LeftParen);
+            Advance(); // Skip (
 
             var parameters = new List<string>();
 
             // Parse parameters
-            while (Current().Type == TokenType.Variable || Current().Type == TokenType.Parameter)
+            if (Current().Type != TokenType.RightParen)
             {
-                parameters.Add(Current().Value);
-                Advance();
+                while (true)
+                {
+                    if (Current().Type != TokenType.Variable && Current().Type != TokenType.Parameter)
+                    {
+                        throw new Exception($"Expected parameter name but got {Current().Type} at position {Current().Position}");
+                    }
 
-                if (Current().Type == TokenType.Comma)
-                {
+                    parameters.Add(Current().Value);
                     Advance();
-                }
-                else
-                {
-                    break;
+
+                    if (Current().Type == TokenType.RightParen)
+                        break;
+
+                    Expect(TokenType.Comma);
+                    Advance(); // Skip comma
                 }
             }
+
+            Expect(TokenType.RightParen);
+            Advance(); // Skip )
 
             Expect(TokenType.Arrow);
             Advance(); // Skip =>
 
             var expression = ParseExpression();
-
-            Expect(TokenType.LambdaEnd);
-            Advance(); // Skip }
 
             return new LambdaNode(parameters, expression);
         }
@@ -1414,8 +1429,63 @@ namespace TemplateInterpreter
 
             switch (token.Type)
             {
-                case TokenType.LambdaStart:
-                    return ParseLambda();
+                case TokenType.LeftParen:
+                    // Store current position so we can backtrack if needed
+                    var pos = _position;
+
+                    // Look ahead to see if this could be a lambda expression
+                    Advance(); // Skip (
+
+                    // Check if we have valid parameter list
+                    bool couldBeLambda = true;
+                    bool firstParam = true;
+
+                    while (_position < _tokens.Count && Current().Type != TokenType.RightParen)
+                    {
+                        if (firstParam)
+                        {
+                            if (Current().Type != TokenType.Variable)
+                            {
+                                couldBeLambda = false;
+                                break;
+                            }
+                            firstParam = false;
+                        }
+                        else
+                        {
+                            if (Current().Type == TokenType.Comma)
+                            {
+                                Advance();
+                                if (Current().Type != TokenType.Variable)
+                                {
+                                    couldBeLambda = false;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                couldBeLambda = false;
+                                break;
+                            }
+                        }
+                        Advance();
+                    }
+
+                    if (couldBeLambda && Current().Type == TokenType.RightParen)
+                    {
+                        Advance(); // Skip )
+                        couldBeLambda = Current().Type == TokenType.Arrow;
+                    }
+                    else
+                    {
+                        couldBeLambda = false;
+                    }
+
+                    // Reset position
+                    _position = pos;
+
+                    // Parse as either lambda or grouped expression
+                    return couldBeLambda ? ParseLambda() : ParseGroupExpression();
 
                 case TokenType.Function:
                     return ParseFunctionCall();
@@ -1439,13 +1509,6 @@ namespace TemplateInterpreter
                 case TokenType.False:
                     Advance();
                     return new BooleanNode(false);
-
-                case TokenType.LeftParen:
-                    Advance();
-                    var expression = ParseExpression();
-                    Expect(TokenType.RightParen);
-                    Advance();
-                    return expression;
 
                 default:
                     throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
