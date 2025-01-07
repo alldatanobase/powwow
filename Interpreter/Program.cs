@@ -265,16 +265,54 @@ namespace TemplateInterpreter
             //var data15 = new ExpandoObject();
             //Console.WriteLine(interpreter.Interpret(template15, data15));
 
-            //Example 16: arrays
-            var template16 = @"
-{{#each x in []}}{{x}}, {{/each}}
-{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}}
-{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}}
-{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}}
-{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}}
-{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}}";
-            var data16 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template16, data16));
+            //            //Example 16: arrays
+            //            var template16 = @"
+            //{{#each x in []}}{{x}}, {{/each}}
+            //{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}}
+            //{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}}
+            //{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}}
+            //{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}}
+            //{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}}
+            //{{#each x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/each}}";
+            //            var data16 = new ExpandoObject();
+            //            Console.WriteLine(interpreter.Interpret(template16, data16));
+
+            //Example 17: operations
+            var template17 = @"
+{{at([1, 2, 3], 1)}} // expect 2
+{{first([1, 2, 3])}} // expect 1
+{{last([1, 2, 3])}} // expect 3
+{{any([1, 2, 3])}} // expect true
+{{any([])}} // expect false
+{{if(10 > 11, ""yes"", ""no"")}} // expect no
+{{if(10 < 11, ""yes"", ""no"")}} // expect yes
+{{join([3.4, false, ""foo""], "" | "")}} // expect 3.4 | false | foo
+{{#each x in explode(""a,b,c"", "","")}}{{x}} {{/each}} // expect a b c 
+{{#each x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/each}} // expect 2 4 6 
+{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}} // expect 10
+{{#each x in take([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect foo bar 
+{{#each x in skip([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect baz 
+{{#each x in order([4, 7, 2])}}{{x}} {{/each}} // expect 2 4 7 
+{{#each x in order([4, 7, 2], false)}}{{x}} {{/each}} // expect 7 4 2 
+{{#each x in order([""aaaa"", ""zz"", ""yyy""], (a, b) => length(a) - length(b))}}{{x}} {{/each}} // expect zz yyy aaaa 
+{{get(obj(name: ""gordon"", age: 22), ""name"")}} // expect gordon
+{{#each x in keys(obj(name: ""John"", age: 30, city: ""Atlanta""))}}{{x}} {{/each}} // expect name, age, city
+{{#each key in keys(group([obj(city: ""Atlanta"", name: ""Jeff"", age: 10), 
+         obj(city: ""Atlanta"", name: ""Jim"", age: 44), 
+         obj(city: ""Denver"", name: ""Cindy"", age: 23)], 
+       ""city""))}}{{key}} {{/each}} // expect Atlanta Denver
+{{mod(7, 3)}}           // Returns 1
+{{floor(3.7)}}         // Returns 3
+{{ceil(3.2)}}          // Returns 4
+{{round(3.45)}}        // Returns 3
+{{round(3.45678, 2)}}  // Returns 3.46
+{{string(123.45)}}     // Returns ""123.45""
+{{string(true)}}       // Returns ""true""
+{{number(""123.45"")}}   // Returns 123.45
+{{numeric(""123.45"")}}  // Returns true
+{{numeric(""abc"")}}     // Returns false";
+            var data17 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template17, data17));
         }
     }
 
@@ -442,9 +480,9 @@ namespace TemplateInterpreter
     public enum TokenType
     {
         Text,
-        DirectiveStart,      // {{
-        DirectiveEnd,        // }}
-        Variable,           // alphanumeric+dots
+        DirectiveStart,    // {{
+        DirectiveEnd,      // }}
+        Variable,          // alphanumeric+dots
         String,            // "..."
         Number,            // decimal
         True,              // true
@@ -2077,6 +2115,475 @@ namespace TemplateInterpreter
 
                     return result;
                 });
+
+            Register("at",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var index = Convert.ToInt32(args[1]);
+
+                    if (array == null)
+                        throw new Exception("at function requires an array as first argument");
+
+                    var list = array.Cast<object>().ToList();
+                    if (index < 0 || index >= list.Count)
+                        throw new Exception($"Index {index} is out of bounds for array of length {list.Count}");
+
+                    return list[index];
+                });
+
+            Register("first",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    if (array == null)
+                        throw new Exception("first function requires an array argument");
+
+                    var list = array.Cast<object>().ToList();
+                    if (list.Count == 0)
+                        throw new Exception("Cannot get first element of empty array");
+
+                    return list[0];
+                });
+
+            Register("last",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    if (array == null)
+                        throw new Exception("last function requires an array argument");
+
+                    var list = array.Cast<object>().ToList();
+                    if (list.Count == 0)
+                        throw new Exception("Cannot get last element of empty array");
+
+                    return list[list.Count - 1];
+                });
+
+            Register("any",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    if (array == null)
+                        throw new Exception("any function requires an array argument");
+
+                    return array.Cast<object>().Any();
+                });
+
+            Register("if",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(bool)),
+                    new ParameterDefinition(typeof(object)),
+                    new ParameterDefinition(typeof(object))
+                },
+                args =>
+                {
+                    var condition = Convert.ToBoolean(args[0]);
+                    return condition ? args[1] : args[2];
+                });
+
+            Register("join",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var delimiter = args[1] as string;
+
+                    if (array == null)
+                        throw new Exception("join function requires an array as first argument");
+                    if (delimiter == null)
+                        throw new Exception("join function requires a string as second argument");
+
+                    return string.Join(delimiter, array.Cast<object>().Select(x => x?.ToString() ?? ""));
+                });
+
+            Register("explode",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0] as string;
+                    var delimiter = args[1] as string;
+
+                    if (str == null)
+                        throw new Exception("explode function requires a string as first argument");
+                    if (delimiter == null)
+                        throw new Exception("explode function requires a string as second argument");
+
+                    return str.Split(new[] { delimiter }, StringSplitOptions.None).ToList();
+                });
+
+            Register("map",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(Func<List<dynamic>, dynamic>))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var mapper = args[1] as Func<List<dynamic>, dynamic>;
+
+                    if (array == null || mapper == null)
+                        throw new Exception("map function requires an array and a function");
+
+                    return array.Cast<object>()
+                        .Select(item => mapper(new List<dynamic> { item }))
+                        .ToList();
+                });
+
+            Register("reduce",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(Func<List<dynamic>, dynamic>)),
+                    new ParameterDefinition(typeof(object))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var reducer = args[1] as Func<List<dynamic>, dynamic>;
+                    var initialValue = args[2];
+
+                    if (array == null || reducer == null)
+                        throw new Exception("reduce function requires an array and a function");
+
+                    return array.Cast<object>()
+                        .Aggregate((object)initialValue, (acc, curr) =>
+                            reducer(new List<dynamic> { acc, curr }));
+                });
+
+            Register("take",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    int count = Convert.ToInt32(args[1]);
+
+                    if (array == null)
+                        throw new Exception("take function requires an array as first argument");
+
+                    if (count <= 0)
+                        return new List<object>();
+
+                    return array.Cast<object>().Take(count).ToList();
+                });
+
+            Register("skip",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    int count = Convert.ToInt32(args[1]);
+
+                    if (array == null)
+                        throw new Exception("skip function requires an array as first argument");
+
+                    return array.Cast<object>().Skip(count).ToList();
+                });
+
+            Register("order",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    if (array == null)
+                        throw new Exception("order function requires an array argument");
+
+                    return array.Cast<object>().OrderBy(x => x).ToList();
+                });
+
+            Register("order",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(bool))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var ascending = Convert.ToBoolean(args[1]);
+
+                    if (array == null)
+                        throw new Exception("order function requires an array as first argument");
+
+                    var ordered = array.Cast<object>();
+                    return (ascending ? ordered.OrderBy(x => x) : ordered.OrderByDescending(x => x)).ToList();
+                });
+
+            Register("order",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(Func<List<dynamic>, dynamic>))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var comparer = args[1] as Func<List<dynamic>, dynamic>;
+
+                    if (array == null || comparer == null)
+                        throw new Exception("order function requires an array and a comparison function");
+
+                    return array.Cast<object>()
+                        .OrderBy(x => x, new DynamicComparer(comparer))
+                        .ToList();
+                });
+
+            Register("group",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    var fieldName = args[1] as string;
+
+                    if (array == null)
+                        throw new Exception("group function requires an array as first argument");
+                    if (string.IsNullOrEmpty(fieldName))
+                        throw new Exception("group function requires a non-empty string as second argument");
+
+                    var result = new ExpandoObject() as IDictionary<string, object>;
+
+                    foreach (var item in array)
+                    {
+                        // Skip null items
+                        if (item == null) continue;
+
+                        // Get the group key from the item
+                        string key;
+                        if (item is IDictionary<string, object> dict)
+                        {
+                            if (!dict.ContainsKey(fieldName))
+                                throw new Exception($"Object does not contain field '{fieldName}'");
+                            key = dict[fieldName]?.ToString();
+                        }
+                        else
+                        {
+                            var property = item.GetType().GetProperty(fieldName);
+                            if (property == null)
+                                throw new Exception($"Object does not contain field '{fieldName}'");
+                            key = property.GetValue(item)?.ToString();
+                        }
+
+                        if (key == null)
+                            throw new Exception($"Field '{fieldName}' value cannot be null");
+
+                        // Add item to the appropriate group
+                        if (!result.ContainsKey(key))
+                        {
+                            result[key] = new List<object>();
+                        }
+                        ((List<object>)result[key]).Add(item);
+                    }
+
+                    return result;
+                });
+
+            Register("get",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(object)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var obj = args[0];
+                    var fieldName = args[1] as string;
+
+                    if (obj == null)
+                        throw new Exception("get function requires an object as first argument");
+                    if (string.IsNullOrEmpty(fieldName))
+                        throw new Exception("get function requires a non-empty string as second argument");
+
+                    // Handle ExpandoObject and other dictionary types
+                    if (obj is IDictionary<string, object> dict)
+                    {
+                        if (!dict.ContainsKey(fieldName))
+                            throw new Exception($"Object does not contain field '{fieldName}'");
+
+                        var value = dict[fieldName];
+                        if (TypeHelper.IsConvertibleToDecimal(value))
+                        {
+                            value = (decimal)value;
+                        }
+                        return value;
+                    }
+
+                    // Handle regular objects using reflection
+                    var property = obj.GetType().GetProperty(fieldName);
+                    if (property == null)
+                        throw new Exception($"Object does not contain field '{fieldName}'");
+
+                    var propValue = property.GetValue(obj);
+                    if (TypeHelper.IsConvertibleToDecimal(propValue))
+                    {
+                        propValue = (decimal)propValue;
+                    }
+                    return propValue;
+                });
+
+            Register("keys",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(object))
+                },
+                args =>
+                {
+                    var obj = args[0];
+                    if (obj == null)
+                        throw new Exception("keys function requires an object argument");
+
+                    // Handle ExpandoObject and other dictionary types
+                    if (obj is IDictionary<string, object> dict)
+                    {
+                        return dict.Keys.ToList();
+                    }
+
+                    // Handle regular objects using reflection
+                    var properties = obj.GetType().GetProperties();
+                    var propertyNames = new List<string>();
+                    foreach (var prop in properties)
+                    {
+                        propertyNames.Add(prop.Name);
+                    }
+                    return propertyNames;
+                });
+
+            Register("mod",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number1 = Convert.ToInt32(args[0]);
+                    var number2 = Convert.ToInt32(args[1]);
+
+                    if (number2 == 0)
+                        throw new Exception("Cannot perform modulo with zero as divisor");
+
+                    return new decimal(number1 % number2);
+                });
+
+            Register("floor",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number = Convert.ToDecimal(args[0]);
+                    return Math.Floor(number);
+                });
+
+            Register("ceil",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number = Convert.ToDecimal(args[0]);
+                    return Math.Ceiling(number);
+                });
+
+            Register("round",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number = Convert.ToDecimal(args[0]);
+                    return Math.Round(number, 0);
+                });
+
+            Register("round",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number = Convert.ToDecimal(args[0]);
+                    var decimals = Convert.ToInt32(args[1]);
+
+                    if (decimals < 0)
+                        throw new Exception("Number of decimal places cannot be negative");
+
+                    return Math.Round(number, decimals);
+                });
+
+            Register("string",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var number = Convert.ToDecimal(args[0]);
+                    return number.ToString();
+                });
+
+            Register("string",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(bool))
+                },
+                args =>
+                {
+                    var boolean = Convert.ToBoolean(args[0]);
+                    return boolean.ToString().ToLower(); // returning "true" or "false" in lowercase
+                });
+
+            Register("number",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0] as string;
+
+                    if (string.IsNullOrEmpty(str))
+                        throw new Exception("Cannot convert empty or null string to number");
+
+                    if (!decimal.TryParse(str, out decimal result))
+                        throw new Exception($"Cannot convert string '{str}' to number");
+
+                    return result;
+                });
+
+            Register("numeric",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0] as string;
+
+                    if (string.IsNullOrEmpty(str))
+                        return false;
+
+                    return decimal.TryParse(str, out _);
+                });
         }
 
         public void Register(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)
@@ -2302,6 +2809,22 @@ namespace TemplateInterpreter
             }
 
             return false;
+        }
+    }
+
+    public class DynamicComparer : IComparer<object>
+    {
+        private readonly Func<List<dynamic>, dynamic> _comparer;
+
+        public DynamicComparer(Func<List<dynamic>, dynamic> comparer)
+        {
+            _comparer = comparer;
+        }
+
+        public int Compare(object x, object y)
+        {
+            var result = Convert.ToDecimal(_comparer(new List<dynamic> { x, y }));
+            return Math.Sign(result);
         }
     }
 }
