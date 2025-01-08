@@ -318,15 +318,30 @@ namespace TemplateInterpreter
             //            var data17 = new ExpandoObject();
             //            Console.WriteLine(interpreter.Interpret(template17, data17));
 
-            //Example 18: lambda invocation and higher order functions
-            var template18 = @"Square: {{((x) => x * x)(5)}} // expect 25
-            Regular function call {{concat(""Hello "", ""World"")}} // expect Hello World
-            Lambda invocation {{((a, b) => a + b)(2, 3)}} // expect 5
-            Higher-order function {{((f) => f(2))((x) => x * 3)}} // expect 5
-            Higher-order function {{((f) => f(""Hello"", ""World""))((a, b) => concat(a, b))}} // expect HelloWorld
-            Higher-order function {{((f) => ((g) => f(g(""hello"", ""world""))))((a) => toUpper(a))((x, y) => concat(x, y))}} // expect HELLOWORLD";
-            var data18 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template18, data18));
+            ////Example 18: lambda invocation and higher order functions
+            //var template18 = @"Square: {{((x) => x * x)(5)}} // expect 25
+            //Regular function call {{concat(""Hello "", ""World"")}} // expect Hello World
+            //Lambda invocation {{((a, b) => a + b)(2, 3)}} // expect 5
+            //Higher-order function {{((f) => f(2))((x) => x * 3)}} // expect 5
+            //Higher-order function {{((f) => f(""Hello"", ""World""))((a, b) => concat(a, b))}} // expect HelloWorld
+            //Higher-order function {{((f) => ((g) => f(g(""hello"", ""world""))))((a) => toUpper(a))((x, y) => concat(x, y))}} // expect HELLOWORLD";
+            //var data18 = new ExpandoObject();
+            //Console.WriteLine(interpreter.Interpret(template18, data18));
+
+            // Example 19: datetime
+            var template19 = @"
+{{ datetime(""2024-01-08 10:10:10"") }} // expect 1/8/2024 10:10:10 AM
+{{ format(datetime(""2024-01-08 10:10:10""), ""yyyy-MM-dd HH:mm:ss"") }} // expect 2024-01-08 10:10:10
+{{ addYears(datetime(""2024-01-08 10:10:10""), 1) }} // expect 1/8/2025 10:10:10 AM
+{{ addMonths(datetime(""2024-01-08 10:10:10""), 6) }} // expect 7/8/2024 10:10:10 AM
+{{ addDays(datetime(""2024-01-08 10:10:10""), 10) }} // expect 1/18/2024 10:10:10 AM
+{{ addHours(datetime(""2024-01-08 10:10:10""), 24) }} // expect 1/9/2024 10:10:10 AM
+{{ addMinutes(datetime(""2024-01-08 10:10:10""), 30) }} // expect 1/8/2024 10:40:10 AM
+{{ addSeconds(datetime(""2024-01-08 10:10:10""), 20) }} // expect 1/8/2024 10:10:30 AM
+{{ now() }}
+{{ utcNow() }}";
+            var data19 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template19, data19));
         }
     }
 
@@ -2723,6 +2738,203 @@ namespace TemplateInterpreter
                         return false;
 
                     return decimal.TryParse(str, out _);
+                });
+
+            Register("datetime",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var dateStr = args[0] as string;
+                    if (string.IsNullOrEmpty(dateStr))
+                        throw new Exception("datetime function requires a non-empty string argument");
+
+                    try
+                    {
+                        return DateTime.Parse(dateStr);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to parse date string '{dateStr}': {ex.Message}");
+                    }
+                });
+
+            Register("format",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var format = args[1] as string;
+
+                    if (!date.HasValue)
+                        throw new Exception("format function requires a valid DateTime as first argument");
+                    if (string.IsNullOrEmpty(format))
+                        throw new Exception("format function requires a non-empty format string as second argument");
+
+                    try
+                    {
+                        return date.Value.ToString(format);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to format date with format string '{format}': {ex.Message}");
+                    }
+                });
+
+            Register("addYears",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var years = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addYears function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddYears(years);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {years} years to date: {ex.Message}");
+                    }
+                });
+
+            Register("addMonths",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var months = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addMonths function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddMonths(months);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {months} months to date: {ex.Message}");
+                    }
+                });
+
+            Register("addDays",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var days = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addDays function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddDays(days);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {days} days to date: {ex.Message}");
+                    }
+                });
+
+            Register("addHours",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var hours = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addHours function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddHours(hours);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {hours} hours to date: {ex.Message}");
+                    }
+                });
+
+            Register("addMinutes",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var minutes = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addMinutes function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddMinutes(minutes);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {minutes} minutes to date: {ex.Message}");
+                    }
+                });
+
+            Register("addSeconds",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var date = args[0] as DateTime?;
+                    var seconds = Convert.ToInt32(args[1]);
+
+                    if (!date.HasValue)
+                        throw new Exception("addSeconds function requires a valid DateTime as first argument");
+
+                    try
+                    {
+                        return date.Value.AddSeconds(seconds);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to add {seconds} seconds to date: {ex.Message}");
+                    }
+                });
+
+            Register("now",
+                new List<ParameterDefinition>(),
+                args =>
+                {
+                    return DateTime.Now;
+                });
+
+            Register("utcNow",
+                new List<ParameterDefinition>(),
+                args =>
+                {
+                    return DateTime.UtcNow;
                 });
         }
 
