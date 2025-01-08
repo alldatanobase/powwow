@@ -13,27 +13,27 @@ namespace TemplateInterpreter
             // Create the interpreter
             var interpreter = new TemplateInterpreter.Interpreter();
 
-            //// Example 1: Complex arithmetic with parentheses
-            //var template1 = "Result: {{(5 * (var2 + 1.5)) / 2}}";
-            //var data1 = new ExpandoObject();
-            //((IDictionary<string, object>)data1).Add("var2", 2.5);
-            //// Result: 10 (calculates (5 * (2.5 + 1.5)) / 2 = (5 * 4) / 2 = 20 / 2 = 10)
-            //Console.WriteLine(interpreter.Interpret(template1, data1));
+            //            //// Example 1: Complex arithmetic with parentheses
+            //            var template1 = "Result: {{(5 * (var2 + 1.5)) / 2}} // expect 10";
+            //            var data1 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data1).Add("var2", 2.5);
+            //            // Result: 10 (calculates (5 * (2.5 + 1.5)) / 2 = (5 * 4) / 2 = 20 / 2 = 10)
+            //            Console.WriteLine(interpreter.Interpret(template1, data1));
 
-            //// Example 2: Complex boolean logic with parentheses
-            //var template2 = "Is valid: {{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}}";
-            //var data2 = new ExpandoObject();
-            //var data2Dict = (IDictionary<string, object>)data2;
-            //data2Dict.Add("var1", "test");
-            //data2Dict.Add("var2", 2.5);
-            //var nested = new ExpandoObject();
-            //((IDictionary<string, object>)nested).Add("x", 1.5);
-            //data2Dict.Add("var3", nested);
-            //// Is valid: false (negation of (true && (true || false)) = negation of true = false)
-            //Console.WriteLine(interpreter.Interpret(template2, data2));
+            //            //// Example 2: Complex boolean logic with parentheses
+            //            var template2 = "Is valid: {{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}} // expect false";
+            //            var data2 = new ExpandoObject();
+            //            var data2Dict = (IDictionary<string, object>)data2;
+            //            data2Dict.Add("var1", "test");
+            //            data2Dict.Add("var2", 2.5);
+            //            var nested = new ExpandoObject();
+            //            ((IDictionary<string, object>)nested).Add("x", 1.5);
+            //            data2Dict.Add("var3", nested);
+            //            // Is valid: false (negation of (true && (true || false)) = negation of true = false)
+            //            Console.WriteLine(interpreter.Interpret(template2, data2));
 
-            //// Example 3: Nested if statements with complex conditions
-            //var template3 = @"
+            //            //// Example 3: Nested if statements with complex conditions
+            //            var template3 = @"
             //{{#if var1 = ""test""}}
             //    Outer if true
             //    {{#if var2 * 2 >= 5}}
@@ -43,62 +43,66 @@ namespace TemplateInterpreter
             //    {{/if}}
             //{{#else}}
             //    Outer if false
-            //{{/if}}";
-            //// Output: Outer if true\n    Inner if true
-            //Console.WriteLine(interpreter.Interpret(template3, data2));
+            //{{/if}} // expect Outer if true\n    Inner if true";
+            //            var data3 = new ExpandoObject();
+            //            var data3Dict = (IDictionary<string, object>)data3;
+            //            data3Dict.Add("var1", "test");
+            //            data3Dict.Add("var2", 2.5);
+            //            // Output: Outer if true\n    Inner if true
+            //            Console.WriteLine(interpreter.Interpret(template3, data3));
 
-            //// Example 4: Each statement with complex condition inside
-            //var template4 = @"
+            //            //// Example 4: Each statement with complex condition inside
+            //            var template4 = @"
             //Users with high scores:
             //{{#each user in users}}
             //    {{#if user.score > 80 && (user.age < 18 || user.region = ""EU"")}}
             //        {{user.name}} ({{user.score}})
             //    {{/if}}
-            //{{/each}}";
+            //{{/each}} // expect Users with high scores:\n    Alice (90)\n    Bob (85)";
 
-            //var data4 = new ExpandoObject();
-            //var usersList = new List<ExpandoObject>();
-            //// Create user 1
-            //var user1 = new ExpandoObject();
-            //var user1Dict = (IDictionary<string, object>)user1;
-            //user1Dict.Add("name", "Alice");
-            //user1Dict.Add("score", 90);
-            //user1Dict.Add("age", 18);
-            //user1Dict.Add("region", "US");
-            //usersList.Add(user1);
-            //// Create user 2
-            //var user2 = new ExpandoObject();
-            //var user2Dict = (IDictionary<string, object>)user2;
-            //user2Dict.Add("name", "Bob");
-            //user2Dict.Add("score", 85);
-            //user2Dict.Add("age", 25);
-            //user2Dict.Add("region", "EU");
-            //usersList.Add(user2);
-            //// Add users to data
-            //((IDictionary<string, object>)data4).Add("users", usersList);
-            //// Output: Users with high scores:\n    Alice (90)\n    Bob (85)
-            //Console.WriteLine(interpreter.Interpret(template4, data4));
+            //            var data4 = new ExpandoObject();
+            //            var usersList = new List<ExpandoObject>();
+            //            // Create user 1
+            //            var user1 = new ExpandoObject();
+            //            var user1Dict = (IDictionary<string, object>)user1;
+            //            user1Dict.Add("name", "Alice");
+            //            user1Dict.Add("score", 90);
+            //            user1Dict.Add("age", 18);
+            //            user1Dict.Add("region", "US");
+            //            usersList.Add(user1);
+            //            // Create user 2
+            //            var user2 = new ExpandoObject();
+            //            var user2Dict = (IDictionary<string, object>)user2;
+            //            user2Dict.Add("name", "Bob");
+            //            user2Dict.Add("score", 85);
+            //            user2Dict.Add("age", 25);
+            //            user2Dict.Add("region", "EU");
+            //            usersList.Add(user2);
+            //            // Add users to data
+            //            ((IDictionary<string, object>)data4).Add("users", usersList);
+            //            // Output: Users with high scores:\n    Alice (90)\n    Bob (85)
+            //            Console.WriteLine(interpreter.Interpret(template4, data4));
 
-            //////Example 5: Complex mathematical and logical expressions combined
-            //var template5 = @"
-            //Math result: {{ (var1 * 2 + var2) / var3.x }}
-            //Logic result: {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }}
-            //";
-            //var data5 = new ExpandoObject();
-            //var data5Dict = (IDictionary<string, object>)data5;
-            //data5Dict.Add("var1", 3);
-            //data5Dict.Add("var2", 2.5);
-            //var nested5 = new ExpandoObject();
-            //((IDictionary<string, object>)nested5).Add("x", 2);
-            //data5Dict.Add("var3", nested5);
-            /////* Output:
-            ////Math result: 4.25 ((3 * 2 + 2.5) / 2 = 8.5 / 2 = 4.25)
-            ////Logic result: false (((3 > 2.5) = (2 < 5)) && !(2.5 = 2.5) = (true = true) && !true = true && false = false)
-            ////*/
-            //Console.WriteLine(interpreter.Interpret(template5, data5));
+            //            //////Example 5: Complex mathematical and logical expressions combined
+            //            var template5 = @"
+            //Math result: {{ (var1 * 2 + var2) / var3.x }} // expect 4.25
+            //Logic result: {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }} // expect false
+            //            ";
+            //            var data5 = new ExpandoObject();
+            //            var data5Dict = (IDictionary<string, object>)data5;
+            //            data5Dict.Add("var1", 3);
+            //            data5Dict.Add("var2", 2.5);
+            //            var nested5 = new ExpandoObject();
+            //            ((IDictionary<string, object>)nested5).Add("x", 2);
+            //            data5Dict.Add("var3", nested5);
+            //            ///* Output:
+            //            //Math result: 4.25 ((3 * 2 + 2.5) / 2 = 8.5 / 2 = 4.25)
+            //            //Logic result: false (((3 > 2.5) = (2 < 5)) && !(2.5 = 2.5) = (true = true) && !true = true && false = false)
+            //            //*/
+            //            Console.WriteLine(interpreter.Interpret(template5, data5));
 
-            //// Example 6: Nested each statements with conditionals
-            //var template6 = @"
+            //            // Example 6: Nested each statements with conditionals
+            //            var template6 = @"
             //{{#each department in departments}}
             //Department: {{department.name}}
             //    {{#each employee in department.employees}}
@@ -110,82 +114,82 @@ namespace TemplateInterpreter
             //            {{employee.name}} (Junior)
             //        {{/if}}
             //    {{/each}}
-            //{{/each}}";
+            //{{/each}} // expect Department: IT  John (Senior)   Jane (Mid-level)";
 
-            //var data6 = new ExpandoObject();
-            //var deptList = new List<ExpandoObject>();
-            //// Create IT department
-            //var itDept = new ExpandoObject();
-            //var itDeptDict = (IDictionary<string, object>)itDept;
-            //itDeptDict.Add("name", "IT");
-            //itDeptDict.Add("avgSalary", 75000);
-            //var itEmployees = new List<ExpandoObject>();
-            //// Add IT employees
-            //var emp1 = new ExpandoObject();
-            //((IDictionary<string, object>)emp1).Add("name", "John");
-            //((IDictionary<string, object>)emp1).Add("salary", 80000);
-            //((IDictionary<string, object>)emp1).Add("isTemp", false);
-            //itEmployees.Add(emp1);
-            //var emp2 = new ExpandoObject();
-            //((IDictionary<string, object>)emp2).Add("name", "Jane");
-            //((IDictionary<string, object>)emp2).Add("salary", 65000);
-            //((IDictionary<string, object>)emp2).Add("isTemp", false);
-            //itEmployees.Add(emp2);
-            //itDeptDict.Add("employees", itEmployees);
-            //deptList.Add(itDept);
-            //((IDictionary<string, object>)data6).Add("departments", deptList);
-            /////* Output:
-            ////Department: IT
-            ////    John (Senior)
-            ////    Jane (Mid-level)
-            ////*/
-            //Console.WriteLine(interpreter.Interpret(template6, data6));
+            //            var data6 = new ExpandoObject();
+            //            var deptList = new List<ExpandoObject>();
+            //            // Create IT department
+            //            var itDept = new ExpandoObject();
+            //            var itDeptDict = (IDictionary<string, object>)itDept;
+            //            itDeptDict.Add("name", "IT");
+            //            itDeptDict.Add("avgSalary", 75000);
+            //            var itEmployees = new List<ExpandoObject>();
+            //            // Add IT employees
+            //            var emp1 = new ExpandoObject();
+            //            ((IDictionary<string, object>)emp1).Add("name", "John");
+            //            ((IDictionary<string, object>)emp1).Add("salary", 80000);
+            //            ((IDictionary<string, object>)emp1).Add("isTemp", false);
+            //            itEmployees.Add(emp1);
+            //            var emp2 = new ExpandoObject();
+            //            ((IDictionary<string, object>)emp2).Add("name", "Jane");
+            //            ((IDictionary<string, object>)emp2).Add("salary", 65000);
+            //            ((IDictionary<string, object>)emp2).Add("isTemp", false);
+            //            itEmployees.Add(emp2);
+            //            itDeptDict.Add("employees", itEmployees);
+            //            deptList.Add(itDept);
+            //            ((IDictionary<string, object>)data6).Add("departments", deptList);
+            //            ///* Output:
+            //            //Department: IT
+            //            //    John (Senior)
+            //            //    Jane (Mid-level)
+            //            //*/
+            //            Console.WriteLine(interpreter.Interpret(template6, data6));
 
-            //// Example 7: Arbitrarily deep variable path reference
-            //var template7 = @"{{var1.foo.bar.baz}}";
-            //var data7 = new ExpandoObject();
-            //var data7Nested = new ExpandoObject();
-            //var data7DoubleNested = new ExpandoObject();
-            //var data7TripleNested = new ExpandoObject();
-            //((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
-            //((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
-            //((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
-            //((IDictionary<string, object>)data7).Add("var1", data7Nested);
-            //Console.WriteLine(interpreter.Interpret(template7, data7));
+            //            //// Example 7: Arbitrarily deep variable path reference
+            //            var template7 = @"{{var1.foo.bar.baz}} // expect hello world";
+            //            var data7 = new ExpandoObject();
+            //            var data7Nested = new ExpandoObject();
+            //            var data7DoubleNested = new ExpandoObject();
+            //            var data7TripleNested = new ExpandoObject();
+            //            ((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
+            //            ((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
+            //            ((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
+            //            ((IDictionary<string, object>)data7).Add("var1", data7Nested);
+            //            Console.WriteLine(interpreter.Interpret(template7, data7));
 
-            //// Example 8: Call non-existent function
-            ////var template8 = @"Here is a function: {{myfunction()}}";
-            ////var data8 = new ExpandoObject();
-            ////((IDictionary<string, object>)data8).Add("var1", "foo");
-            ////// Expect this to throw an error
-            ////Console.WriteLine(interpreter.Interpret(template8, data8));
+            //            //// Example 8: Call non-existent function
+            //            //var template8 = @"Here is a function: {{myfunction()}}";
+            //            //var data8 = new ExpandoObject();
+            //            //((IDictionary<string, object>)data8).Add("var1", "foo");
+            //            //// Expect this to throw an error
+            //            //Console.WriteLine(interpreter.Interpret(template8, data8));
 
-            //// Example 9: Call length function
-            //var template9 = @"{{length(myArray)}}";
-            //var data9notarray = new ExpandoObject();
-            //((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
-            //var data9 = new ExpandoObject();
-            //var itEmployees1 = new List<ExpandoObject>();
-            //var empa1 = new ExpandoObject();
-            //((IDictionary<string, object>)empa1).Add("name", "John");
-            //((IDictionary<string, object>)empa1).Add("salary", 80000);
-            //((IDictionary<string, object>)empa1).Add("isTemp", false);
-            //itEmployees1.Add(empa1);
-            //var empa2 = new ExpandoObject();
-            //((IDictionary<string, object>)empa2).Add("name", "Jane");
-            //((IDictionary<string, object>)empa2).Add("salary", 65000);
-            //((IDictionary<string, object>)empa2).Add("isTemp", false);
-            //itEmployees1.Add(empa2);
-            //((IDictionary<string, object>)data9).Add("myArray", itEmployees1);
-            //Console.WriteLine(interpreter.Interpret(template9, data9));
+            //            //// Example 9: Call length function
+            //            var template9 = @"{{length(myArray)}}";
+            //            //var data9notarray = new ExpandoObject();
+            //            //((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
+            //            var data9 = new ExpandoObject();
+            //            var itEmployees1 = new List<ExpandoObject>();
+            //            var empa1 = new ExpandoObject();
+            //            ((IDictionary<string, object>)empa1).Add("name", "John");
+            //            ((IDictionary<string, object>)empa1).Add("salary", 80000);
+            //            ((IDictionary<string, object>)empa1).Add("isTemp", false);
+            //            itEmployees1.Add(empa1);
+            //            var empa2 = new ExpandoObject();
+            //            ((IDictionary<string, object>)empa2).Add("name", "Jane");
+            //            ((IDictionary<string, object>)empa2).Add("salary", 65000);
+            //            ((IDictionary<string, object>)empa2).Add("isTemp", false);
+            //            itEmployees1.Add(empa2);
+            //            ((IDictionary<string, object>)data9).Add("myArray", itEmployees1);
+            //            Console.WriteLine(interpreter.Interpret(template9, data9));
 
-            //// Example 10: nested function calls
-            //var template10 = @"{{concat(""hello"", concat("" "", ""world""))}}";
-            //var data10 = new ExpandoObject();
-            //Console.WriteLine(interpreter.Interpret(template10, data10));
+            //            //// Example 10: nested function calls
+            //            var template10 = @"{{concat(""hello"", concat("" "", ""world""))}} // expect hello world";
+            //            var data10 = new ExpandoObject();
+            //            Console.WriteLine(interpreter.Interpret(template10, data10));
 
-            ////Example 11: string functions
-            //var template11 = @"
+            //            ////Example 11: string functions
+            //            var template11 = @"
             //{{contains(""Hello World"", ""World"")}}        // Returns true
             //{{startsWith(""Hello World"", ""Hello"")}}      // Returns true
             //{{endsWith(""Hello World"", ""World"")}}        // Returns true
@@ -196,19 +200,19 @@ namespace TemplateInterpreter
             //{{lastIndexOf(""Hello World World"", ""World"")}} // Returns 12
             //{{substring(""Hello World"", 6)}}             // Returns ""World""
             //{{substring(""Hello World"", 0, 5)}}             // Returns ""Hello""
-            //";
-            //var data11 = new ExpandoObject();
-            //((IDictionary<string, object>)data11).Add("var1", "Hello World");
-            //Console.WriteLine(interpreter.Interpret(template11, data11));
+            //            ";
+            //            var data11 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data11).Add("var1", "Hello World");
+            //            Console.WriteLine(interpreter.Interpret(template11, data11));
 
-            ////Example 12: multiple string function calls
-            //var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
-            //var data12 = new ExpandoObject();
-            //((IDictionary<string, object>)data12).Add("var1", "Hello World");
-            //Console.WriteLine(interpreter.Interpret(template12, data12));
+            //            ////Example 12: multiple string function calls
+            //            var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
+            //            var data12 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data12).Add("var1", "Hello World");
+            //            Console.WriteLine(interpreter.Interpret(template12, data12));
 
-            ////Example 13: overloaded contains functions
-            //var template13 = @"
+            //            ////Example 13: overloaded contains functions
+            //            var template13 = @"
             //{{contains(""Hello World"", ""World"")}}     // true
             //{{contains(""Hello World"", ""foo"")}}     // false
             //{{contains(user, ""firstName"")}} // true
@@ -217,102 +221,112 @@ namespace TemplateInterpreter
             //{{contains(person, ""age"")}}     // false
             //{{contains(dict, ""key"")}}       // true
             //{{contains(dict, ""missing"")}}   // false";
-            //// Regular objects
-            //var user = new { firstName = "John", lastName = "Doe" };
-            //// Dynamic objects
-            //dynamic person = new ExpandoObject();
-            //person.name = "John";
-            //// Dictionary objects
-            //var dict = new Dictionary<string, object> { ["key"] = "value" };
-            //var data13 = new ExpandoObject();
-            //((IDictionary<string, object>)data13).Add("user", user);
-            //((IDictionary<string, object>)data13).Add("person", person);
-            //((IDictionary<string, object>)data13).Add("dict", dict);
-            //Console.WriteLine(interpreter.Interpret(template13, data13));
+            //            // Regular objects
+            //            var user = new { firstName = "John", lastName = "Doe" };
+            //            // Dynamic objects
+            //            dynamic person = new ExpandoObject();
+            //            person.name = "John";
+            //            // Dictionary objects
+            //            var dict = new Dictionary<string, object> { ["key"] = "value" };
+            //            var data13 = new ExpandoObject();
+            //            ((IDictionary<string, object>)data13).Add("user", user);
+            //            ((IDictionary<string, object>)data13).Add("person", person);
+            //            ((IDictionary<string, object>)data13).Add("dict", dict);
+            //            Console.WriteLine(interpreter.Interpret(template13, data13));
 
-            //// Example 14: lambda function
-            //var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
-            //var data14 = new ExpandoObject();
-            //var users = new List<ExpandoObject>();
-            //var empx1 = new ExpandoObject();
-            //var locs1 = new List<ExpandoObject>();
-            //var loc1a = new ExpandoObject();
-            //var loc1b = new ExpandoObject();
-            //((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
-            //((IDictionary<string, object>)loc1b).Add("name", "Denver");
-            //locs1.Add(loc1a);
-            //locs1.Add(loc1b);
-            //((IDictionary<string, object>)empx1).Add("age", "17");
-            //((IDictionary<string, object>)empx1).Add("loc", locs1);
-            //users.Add(empx1);
-            //var empx2 = new ExpandoObject();
-            //var locs2 = new List<ExpandoObject>();
-            //var loc2a = new ExpandoObject();
-            //var loc2b = new ExpandoObject();
-            //((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
-            //((IDictionary<string, object>)loc2b).Add("name", "Decatur");
-            //locs2.Add(loc2a);
-            //locs2.Add(loc2b);
-            //((IDictionary<string, object>)empx2).Add("age", "21");
-            //((IDictionary<string, object>)empx2).Add("loc", locs2);
-            //users.Add(empx2);
-            //((IDictionary<string, object>)data14).Add("users", users);
-            //Console.WriteLine(interpreter.Interpret(template14, data14));
+            //            //// Example 14: lambda function
+            //            var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}} // expect 21AtlantaDecatur";
+            //            var data14 = new ExpandoObject();
+            //            var users = new List<ExpandoObject>();
+            //            var empx1 = new ExpandoObject();
+            //            var locs1 = new List<ExpandoObject>();
+            //            var loc1a = new ExpandoObject();
+            //            var loc1b = new ExpandoObject();
+            //            ((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
+            //            ((IDictionary<string, object>)loc1b).Add("name", "Denver");
+            //            locs1.Add(loc1a);
+            //            locs1.Add(loc1b);
+            //            ((IDictionary<string, object>)empx1).Add("age", "17");
+            //            ((IDictionary<string, object>)empx1).Add("loc", locs1);
+            //            users.Add(empx1);
+            //            var empx2 = new ExpandoObject();
+            //            var locs2 = new List<ExpandoObject>();
+            //            var loc2a = new ExpandoObject();
+            //            var loc2b = new ExpandoObject();
+            //            ((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
+            //            ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
+            //            locs2.Add(loc2a);
+            //            locs2.Add(loc2b);
+            //            ((IDictionary<string, object>)empx2).Add("age", "21");
+            //            ((IDictionary<string, object>)empx2).Add("loc", locs2);
+            //            users.Add(empx2);
+            //            ((IDictionary<string, object>)data14).Add("users", users);
+            //            Console.WriteLine(interpreter.Interpret(template14, data14));
 
-            ////Example 15: objects
-            //var template15 = @"{{obj(name: ""John"", age: 30).name}}
-            //{{obj(person: obj(name: ""John"", age: 30), active: true).person.age}}";
-            //var data15 = new ExpandoObject();
-            //Console.WriteLine(interpreter.Interpret(template15, data15));
+            //            ////Example 15: objects
+            //            var template15 = @"{{obj(name: ""John"", age: 30).name}} // expect John
+            //{{obj(person: obj(name: ""John"", age: 30), active: true).person.age}} // expect 30";
+            //            var data15 = new ExpandoObject();
+            //            Console.WriteLine(interpreter.Interpret(template15, data15));
 
             //            //Example 16: arrays
             //            var template16 = @"
-            //{{#each x in []}}{{x}}, {{/each}}
-            //{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}}
-            //{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}}
-            //{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}}
-            //{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}}
-            //{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}}
-            //{{#each x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/each}}";
+            //{{#each x in []}}{{x}}, {{/each}} // expect nothing
+            //{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}} // expect 1.1, 2, 0.3, 
+            //{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}} // expect hello world, foo bar, 
+            //{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}} // expect Jeff, Jim, 
+            //{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}} // expect foo, 2, bar, false, object,
+            //{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}} // expect 1, list, 4, 
+            //{{#each x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/each}} // expect 1, 2, 3, ";
             //            var data16 = new ExpandoObject();
             //            Console.WriteLine(interpreter.Interpret(template16, data16));
 
-            //Example 17: operations
-            var template17 = @"
-{{at([1, 2, 3], 1)}} // expect 2
-{{first([1, 2, 3])}} // expect 1
-{{last([1, 2, 3])}} // expect 3
-{{any([1, 2, 3])}} // expect true
-{{any([])}} // expect false
-{{if(10 > 11, ""yes"", ""no"")}} // expect no
-{{if(10 < 11, ""yes"", ""no"")}} // expect yes
-{{join([3.4, false, ""foo""], "" | "")}} // expect 3.4 | false | foo
-{{#each x in explode(""a,b,c"", "","")}}{{x}} {{/each}} // expect a b c 
-{{#each x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/each}} // expect 2 4 6 
-{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}} // expect 10
-{{#each x in take([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect foo bar 
-{{#each x in skip([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect baz 
-{{#each x in order([4, 7, 2])}}{{x}} {{/each}} // expect 2 4 7 
-{{#each x in order([4, 7, 2], false)}}{{x}} {{/each}} // expect 7 4 2 
-{{#each x in order([""aaaa"", ""zz"", ""yyy""], (a, b) => length(a) - length(b))}}{{x}} {{/each}} // expect zz yyy aaaa 
-{{get(obj(name: ""gordon"", age: 22), ""name"")}} // expect gordon
-{{#each x in keys(obj(name: ""John"", age: 30, city: ""Atlanta""))}}{{x}} {{/each}} // expect name, age, city
-{{#each key in keys(group([obj(city: ""Atlanta"", name: ""Jeff"", age: 10), 
-         obj(city: ""Atlanta"", name: ""Jim"", age: 44), 
-         obj(city: ""Denver"", name: ""Cindy"", age: 23)], 
-       ""city""))}}{{key}} {{/each}} // expect Atlanta Denver
-{{mod(7, 3)}}           // Returns 1
-{{floor(3.7)}}         // Returns 3
-{{ceil(3.2)}}          // Returns 4
-{{round(3.45)}}        // Returns 3
-{{round(3.45678, 2)}}  // Returns 3.46
-{{string(123.45)}}     // Returns ""123.45""
-{{string(true)}}       // Returns ""true""
-{{number(""123.45"")}}   // Returns 123.45
-{{numeric(""123.45"")}}  // Returns true
-{{numeric(""abc"")}}     // Returns false";
-            var data17 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template17, data17));
+            //            //Example 17: operations
+            //            var template17 = @"
+            //{{at([1, 2, 3], 1)}} // expect 2
+            //{{first([1, 2, 3])}} // expect 1
+            //{{last([1, 2, 3])}} // expect 3
+            //{{any([1, 2, 3])}} // expect true
+            //{{any([])}} // expect false
+            //{{if(10 > 11, ""yes"", ""no"")}} // expect no
+            //{{if(10 < 11, ""yes"", ""no"")}} // expect yes
+            //{{join([3.4, false, ""foo""], "" | "")}} // expect 3.4 | false | foo
+            //{{#each x in explode(""a,b,c"", "","")}}{{x}} {{/each}} // expect a b c 
+            //{{#each x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/each}} // expect 2 4 6 
+            //{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}} // expect 10
+            //{{#each x in take([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect foo bar 
+            //{{#each x in skip([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect baz 
+            //{{#each x in order([4, 7, 2])}}{{x}} {{/each}} // expect 2 4 7 
+            //{{#each x in order([4, 7, 2], false)}}{{x}} {{/each}} // expect 7 4 2 
+            //{{#each x in order([""aaaa"", ""zz"", ""yyy""], ((a, b) => length(a) - length(b)))}}{{x}} {{/each}} // expect zz yyy aaaa 
+            //{{get(obj(name: ""gordon"", age: 22), ""name"")}} // expect gordon
+            //{{#each x in keys(obj(name: ""John"", age: 30, city: ""Atlanta""))}}{{x}} {{/each}} // expect name age city
+            //{{#each key in keys(group([obj(city: ""Atlanta"", name: ""Jeff"", age: 10), 
+            //         obj(city: ""Atlanta"", name: ""Jim"", age: 44), 
+            //         obj(city: ""Denver"", name: ""Cindy"", age: 23)], 
+            //       ""city""))}}{{key}} {{/each}} // expect Atlanta Denver
+            //{{mod(7, 3)}}           // Returns 1
+            //{{floor(3.7)}}         // Returns 3
+            //{{ceil(3.2)}}          // Returns 4
+            //{{round(3.45)}}        // Returns 3
+            //{{round(3.45678, 2)}}  // Returns 3.46
+            //{{string(123.45)}}     // Returns ""123.45""
+            //{{string(true)}}       // Returns ""true""
+            //{{number(""123.45"")}}   // Returns 123.45
+            //{{numeric(""123.45"")}}  // Returns true
+            //{{numeric(""abc"")}}     // Returns false";
+            //            var data17 = new ExpandoObject();
+            //            Console.WriteLine(interpreter.Interpret(template17, data17));
+
+            //Example 18: lambda invocation and higher order functions
+            var template18 = @"Square: {{((x) => x * x)(5)}} // expect 25
+            Regular function call {{concat(""Hello "", ""World"")}} // expect Hello World
+            Lambda invocation {{((a, b) => a + b)(2, 3)}} // expect 5
+            Higher-order function {{((f) => f(2))((x) => x * 3)}} // expect 5
+            Higher-order function {{((f) => f(""Hello"", ""World""))((a, b) => concat(a, b))}} // expect HelloWorld
+            Higher-order function {{((f) => ((g) => f(g(""hello"", ""world""))))((a) => toUpper(a))((x, y) => concat(x, y))}} // expect HELLOWORLD";
+            var data18 = new ExpandoObject();
+            Console.WriteLine(interpreter.Interpret(template18, data18));
         }
     }
 
@@ -324,9 +338,9 @@ namespace TemplateInterpreter
 
         public Interpreter()
         {
-            _lexer = new Lexer();
-            _parser = new Parser();
             _functionRegistry = new FunctionRegistry();
+            _lexer = new Lexer();
+            _parser = new Parser(_functionRegistry);
         }
 
         public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<List<dynamic>, dynamic> implementation)
@@ -376,8 +390,9 @@ namespace TemplateInterpreter
             return _data;
         }
 
-        public virtual dynamic ResolveValue(string path)
+        public bool TryResolveValue(string path, out dynamic value)
         {
+            value = null;
             var parts = path.Split('.');
             dynamic current = null;
 
@@ -404,11 +419,21 @@ namespace TemplateInterpreter
                 }
                 catch
                 {
-                    throw new Exception(string.Format("Unable to resolve path: {0}", path));
+                    return false;
                 }
             }
 
-            return current;
+            value = current;
+            return true;
+        }
+
+        public virtual dynamic ResolveValue(string path)
+        {
+            if (TryResolveValue(path, out dynamic value))
+            {
+                return value;
+            }
+            throw new Exception($"Unable to resolve path: {path}");
         }
     }
 
@@ -431,6 +456,41 @@ namespace TemplateInterpreter
             {
                 _parameters[parameterNames[i]] = parameterValues[i];
             }
+        }
+
+        public bool HasParameter(string name)
+        {
+            return _parameters.ContainsKey(name);
+        }
+
+        public dynamic GetParameter(string name)
+        {
+            return _parameters[name];
+        }
+
+        public bool TryGetParameterFromAnyContext(string name, out dynamic value)
+        {
+            value = null;
+            ExecutionContext currentContext = this;
+
+            while (currentContext != null)
+            {
+                if (currentContext is LambdaExecutionContext lambdaContext)
+                {
+                    if (lambdaContext._parameters.TryGetValue(name, out value))
+                    {
+                        return true;
+                    }
+                    currentContext = lambdaContext._parentContext;
+                }
+                else
+                {
+                    // We've reached a non-lambda context (base ExecutionContext)
+                    break;
+                }
+            }
+
+            return false;
         }
 
         public override dynamic ResolveValue(string path)
@@ -921,36 +981,92 @@ namespace TemplateInterpreter
         }
     }
 
-    public class FunctionNode : AstNode
+    public class InvocationNode : AstNode
     {
-        private readonly string _name;
+        private readonly AstNode _callable;
         private readonly List<AstNode> _arguments;
 
-        public FunctionNode(string name, List<AstNode> arguments)
+        public InvocationNode(AstNode callable, List<AstNode> arguments)
         {
-            _name = name;
+            _callable = callable;
             _arguments = arguments;
         }
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            // Evaluate all arguments
+            // First evaluate all arguments
             var evaluatedArgs = _arguments.Select(arg => arg.Evaluate(context)).ToList();
 
-            // Get function registry
-            var registry = context.GetFunctionRegistry();
+            // Then evaluate the callable, but handle special cases
+            var callable = _callable.Evaluate(context);
 
-            // Try to get matching function definition
-            if (!registry.TryGetFunction(_name, evaluatedArgs, out var function, out var effectiveArgs))
+            // Now handle the callable based on its type
+            if (callable is Func<List<dynamic>, dynamic> lambdaFunc)
             {
-                throw new Exception($"No matching overload found for function '{_name}' with the provided arguments");
+                // Direct lambda invocation
+                return lambdaFunc(evaluatedArgs);
+            }
+            else if (callable is FunctionInfo functionInfo)
+            {
+                FunctionRegistry registry;
+
+                // First check if this is a parameter that contains a function in any parent context
+                if (context is LambdaExecutionContext lambdaContext &&
+                    lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
+                {
+                    if (paramValue is Func<List<dynamic>, dynamic> paramFunc)
+                    {
+                        return paramFunc(evaluatedArgs);
+                    }
+                    else if (paramValue is FunctionInfo paramFuncInfo)
+                    {
+                        registry = context.GetFunctionRegistry();
+                        if (!registry.TryGetFunction(paramFuncInfo.Name, evaluatedArgs, out var function, out var effectiveArgs))
+                        {
+                            throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
+                        }
+                        registry.ValidateArguments(function, effectiveArgs);
+                        return function.Implementation(effectiveArgs);
+                    }
+                }
+
+                // If not a parameter in any context or parameter isn't a function, try the registry
+                registry = context.GetFunctionRegistry();
+                if (!registry.TryGetFunction(functionInfo.Name, evaluatedArgs, out var func, out var effArgs))
+                {
+                    throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
+                }
+                registry.ValidateArguments(func, effArgs);
+                return func.Implementation(effArgs);
             }
 
-            // Validate arguments
-            registry.ValidateArguments(function, effectiveArgs);
 
-            // Execute function with effective arguments (including defaults for optional parameters)
-            return function.Implementation(effectiveArgs);
+            throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
+        }
+    }
+
+    public class FunctionInfo
+    {
+        public string Name { get; }
+
+        public FunctionInfo(string name)
+        {
+            Name = name;
+        }
+    }
+
+    public class FunctionReferenceNode : AstNode
+    {
+        private readonly string _functionName;
+
+        public FunctionReferenceNode(string functionName)
+        {
+            _functionName = functionName;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            return new FunctionInfo(_functionName);
         }
     }
 
@@ -959,8 +1075,17 @@ namespace TemplateInterpreter
         private readonly List<string> _parameters;
         private readonly AstNode _expression;
 
-        public LambdaNode(List<string> parameters, AstNode expression)
+        public LambdaNode(List<string> parameters, AstNode expression, FunctionRegistry functionRegistry)
         {
+            // Validate parameter names against function registry
+            foreach (var param in parameters)
+            {
+                if (functionRegistry.HasFunction(param))
+                {
+                    throw new Exception($"Parameter name '{param}' conflicts with an existing function name");
+                }
+            }
+
             _parameters = parameters;
             _expression = expression;
         }
@@ -1296,6 +1421,12 @@ namespace TemplateInterpreter
     {
         private IReadOnlyList<Token> _tokens;
         private int _position;
+        private readonly FunctionRegistry _functionRegistry;
+
+        public Parser(FunctionRegistry functionRegistry)
+        {
+            _functionRegistry = functionRegistry;
+        }
 
         public AstNode Parse(IReadOnlyList<Token> tokens)
         {
@@ -1369,17 +1500,11 @@ namespace TemplateInterpreter
             return expression;
         }
 
-        private AstNode ParseFunctionCall()
+        private AstNode ParseInvocation(AstNode callable)
         {
-            var functionName = Current().Value;
-            Advance(); // Move past function name
-
-            Expect(TokenType.LeftParen);
-            Advance(); // Move past left paren
-
+            Advance(); // Skip (
             var arguments = new List<AstNode>();
 
-            // Parse arguments
             if (Current().Type != TokenType.RightParen)
             {
                 while (true)
@@ -1390,14 +1515,14 @@ namespace TemplateInterpreter
                         break;
 
                     Expect(TokenType.Comma);
-                    Advance(); // Move past comma
+                    Advance();
                 }
             }
 
             Expect(TokenType.RightParen);
-            Advance(); // Move past right paren
+            Advance();
 
-            return new FunctionNode(functionName, arguments);
+            return new InvocationNode(callable, arguments);
         }
 
         private AstNode ParseLambda()
@@ -1436,7 +1561,7 @@ namespace TemplateInterpreter
 
             var expression = ParseExpression();
 
-            return new LambdaNode(parameters, expression);
+            return new LambdaNode(parameters, expression, _functionRegistry);
         }
 
         private AstNode ParseObjectCreation()
@@ -1720,66 +1845,19 @@ namespace TemplateInterpreter
                     break;
 
                 case TokenType.LeftParen:
-                    // Store current position so we can backtrack if needed
-                    var pos = _position;
-
-                    // Look ahead to see if this could be a lambda expression
-                    Advance(); // Skip (
-
-                    // Check if we have valid parameter list
-                    bool couldBeLambda = true;
-                    bool firstParam = true;
-
-                    while (_position < _tokens.Count && Current().Type != TokenType.RightParen)
+                    if (IsLambdaAhead())
                     {
-                        if (firstParam)
-                        {
-                            if (Current().Type != TokenType.Variable)
-                            {
-                                couldBeLambda = false;
-                                break;
-                            }
-                            firstParam = false;
-                        }
-                        else
-                        {
-                            if (Current().Type == TokenType.Comma)
-                            {
-                                Advance();
-                                if (Current().Type != TokenType.Variable)
-                                {
-                                    couldBeLambda = false;
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                couldBeLambda = false;
-                                break;
-                            }
-                        }
-                        Advance();
-                    }
-
-                    if (couldBeLambda && Current().Type == TokenType.RightParen)
-                    {
-                        Advance(); // Skip )
-                        couldBeLambda = Current().Type == TokenType.Arrow;
+                        expr = ParseLambda();
                     }
                     else
                     {
-                        couldBeLambda = false;
+                        expr = ParseGroupExpression();
                     }
-
-                    // Reset position
-                    _position = pos;
-
-                    // Parse as either lambda or grouped expression
-                    expr = couldBeLambda ? ParseLambda() : ParseGroupExpression();
                     break;
 
                 case TokenType.Function:
-                    expr = ParseFunctionCall();
+                    expr = new FunctionReferenceNode(token.Value);
+                    Advance();
                     break;
 
                 case TokenType.Variable:
@@ -1811,6 +1889,13 @@ namespace TemplateInterpreter
                     throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
             }
 
+            // Handle any invocations that follow the primary expression
+            while (_position < _tokens.Count && Current().Type == TokenType.LeftParen)
+            {
+                expr = ParseInvocation(expr);
+            }
+
+            // Handle any fields accessed after a dot
             while (_position < _tokens.Count && Current().Type == TokenType.Dot)
             {
                 Advance(); // Skip the dot
@@ -1824,6 +1909,56 @@ namespace TemplateInterpreter
             }
 
             return expr;
+        }
+
+        private bool IsLambdaAhead()
+        {
+            var pos = _position;
+            try
+            {
+                Advance();
+                bool firstParam = true;
+                while (_position < _tokens.Count && Current().Type != TokenType.RightParen)
+                {
+                    if (firstParam)
+                    {
+                        if (Current().Type != TokenType.Variable)
+                        {
+                            return false;
+                        }
+                        firstParam = false;
+                    }
+                    else
+                    {
+                        if (Current().Type == TokenType.Comma)
+                        {
+                            Advance();
+                            if (Current().Type != TokenType.Variable)
+                            {
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+                    Advance();
+                }
+
+                if (Current().Type != TokenType.RightParen)
+                {
+                    return false;
+                }
+
+                Advance();
+
+                return Current().Type == TokenType.Arrow;
+            }
+            finally
+            {
+                _position = pos;
+            }
         }
 
         private bool IsComparisonOperator(TokenType type)
@@ -1900,6 +2035,11 @@ namespace TemplateInterpreter
         {
             _functions = new Dictionary<string, List<FunctionDefinition>>();
             RegisterBuiltInFunctions();
+        }
+
+        public bool HasFunction(string name)
+        {
+            return _functions.ContainsKey(name);
         }
 
         private void RegisterBuiltInFunctions()
