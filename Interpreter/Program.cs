@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Dynamic;
 using System.Linq;
 using System.Text;
@@ -12,336 +13,6 @@ namespace TemplateInterpreter
         {
             // Create the interpreter
             var interpreter = new TemplateInterpreter.Interpreter();
-
-            //            //// Example 1: Complex arithmetic with parentheses
-            //            var template1 = "Result: {{(5 * (var2 + 1.5)) / 2}} // expect 10";
-            //            var data1 = new ExpandoObject();
-            //            ((IDictionary<string, object>)data1).Add("var2", 2.5);
-            //            // Result: 10 (calculates (5 * (2.5 + 1.5)) / 2 = (5 * 4) / 2 = 20 / 2 = 10)
-            //            Console.WriteLine(interpreter.Interpret(template1, data1));
-
-            //            //// Example 2: Complex boolean logic with parentheses
-            //            var template2 = "Is valid: {{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}} // expect false";
-            //            var data2 = new ExpandoObject();
-            //            var data2Dict = (IDictionary<string, object>)data2;
-            //            data2Dict.Add("var1", "test");
-            //            data2Dict.Add("var2", 2.5);
-            //            var nested = new ExpandoObject();
-            //            ((IDictionary<string, object>)nested).Add("x", 1.5);
-            //            data2Dict.Add("var3", nested);
-            //            // Is valid: false (negation of (true && (true || false)) = negation of true = false)
-            //            Console.WriteLine(interpreter.Interpret(template2, data2));
-
-            //            //// Example 3: Nested if statements with complex conditions
-            //            var template3 = @"
-            //{{#if var1 = ""test""}}
-            //    Outer if true
-            //    {{#if var2 * 2 >= 5}}
-            //        Inner if also true
-            //    {{#else}}
-            //        Inner if false
-            //    {{/if}}
-            //{{#else}}
-            //    Outer if false
-            //{{/if}} // expect Outer if true\n    Inner if true";
-            //            var data3 = new ExpandoObject();
-            //            var data3Dict = (IDictionary<string, object>)data3;
-            //            data3Dict.Add("var1", "test");
-            //            data3Dict.Add("var2", 2.5);
-            //            // Output: Outer if true\n    Inner if true
-            //            Console.WriteLine(interpreter.Interpret(template3, data3));
-
-            //            //// Example 4: Each statement with complex condition inside
-            //            var template4 = @"
-            //Users with high scores:
-            //{{#each user in users}}
-            //    {{#if user.score > 80 && (user.age < 18 || user.region = ""EU"")}}
-            //        {{user.name}} ({{user.score}})
-            //    {{/if}}
-            //{{/each}} // expect Users with high scores:\n    Alice (90)\n    Bob (85)";
-
-            //            var data4 = new ExpandoObject();
-            //            var usersList = new List<ExpandoObject>();
-            //            // Create user 1
-            //            var user1 = new ExpandoObject();
-            //            var user1Dict = (IDictionary<string, object>)user1;
-            //            user1Dict.Add("name", "Alice");
-            //            user1Dict.Add("score", 90);
-            //            user1Dict.Add("age", 18);
-            //            user1Dict.Add("region", "US");
-            //            usersList.Add(user1);
-            //            // Create user 2
-            //            var user2 = new ExpandoObject();
-            //            var user2Dict = (IDictionary<string, object>)user2;
-            //            user2Dict.Add("name", "Bob");
-            //            user2Dict.Add("score", 85);
-            //            user2Dict.Add("age", 25);
-            //            user2Dict.Add("region", "EU");
-            //            usersList.Add(user2);
-            //            // Add users to data
-            //            ((IDictionary<string, object>)data4).Add("users", usersList);
-            //            // Output: Users with high scores:\n    Alice (90)\n    Bob (85)
-            //            Console.WriteLine(interpreter.Interpret(template4, data4));
-
-            //            //////Example 5: Complex mathematical and logical expressions combined
-            //            var template5 = @"
-            //Math result: {{ (var1 * 2 + var2) / var3.x }} // expect 4.25
-            //Logic result: {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }} // expect false
-            //            ";
-            //            var data5 = new ExpandoObject();
-            //            var data5Dict = (IDictionary<string, object>)data5;
-            //            data5Dict.Add("var1", 3);
-            //            data5Dict.Add("var2", 2.5);
-            //            var nested5 = new ExpandoObject();
-            //            ((IDictionary<string, object>)nested5).Add("x", 2);
-            //            data5Dict.Add("var3", nested5);
-            //            ///* Output:
-            //            //Math result: 4.25 ((3 * 2 + 2.5) / 2 = 8.5 / 2 = 4.25)
-            //            //Logic result: false (((3 > 2.5) = (2 < 5)) && !(2.5 = 2.5) = (true = true) && !true = true && false = false)
-            //            //*/
-            //            Console.WriteLine(interpreter.Interpret(template5, data5));
-
-            //            // Example 6: Nested each statements with conditionals
-            //            var template6 = @"
-            //{{#each department in departments}}
-            //Department: {{department.name}}
-            //    {{#each employee in department.employees}}
-            //        {{#if employee.salary > department.avgSalary && !employee.isTemp}}
-            //            {{employee.name}} (Senior)
-            //        {{#elseif employee.salary > department.avgSalary * 0.8}}
-            //            {{employee.name}} (Mid-level)
-            //        {{#else}}
-            //            {{employee.name}} (Junior)
-            //        {{/if}}
-            //    {{/each}}
-            //{{/each}} // expect Department: IT  John (Senior)   Jane (Mid-level)";
-
-            //            var data6 = new ExpandoObject();
-            //            var deptList = new List<ExpandoObject>();
-            //            // Create IT department
-            //            var itDept = new ExpandoObject();
-            //            var itDeptDict = (IDictionary<string, object>)itDept;
-            //            itDeptDict.Add("name", "IT");
-            //            itDeptDict.Add("avgSalary", 75000);
-            //            var itEmployees = new List<ExpandoObject>();
-            //            // Add IT employees
-            //            var emp1 = new ExpandoObject();
-            //            ((IDictionary<string, object>)emp1).Add("name", "John");
-            //            ((IDictionary<string, object>)emp1).Add("salary", 80000);
-            //            ((IDictionary<string, object>)emp1).Add("isTemp", false);
-            //            itEmployees.Add(emp1);
-            //            var emp2 = new ExpandoObject();
-            //            ((IDictionary<string, object>)emp2).Add("name", "Jane");
-            //            ((IDictionary<string, object>)emp2).Add("salary", 65000);
-            //            ((IDictionary<string, object>)emp2).Add("isTemp", false);
-            //            itEmployees.Add(emp2);
-            //            itDeptDict.Add("employees", itEmployees);
-            //            deptList.Add(itDept);
-            //            ((IDictionary<string, object>)data6).Add("departments", deptList);
-            //            ///* Output:
-            //            //Department: IT
-            //            //    John (Senior)
-            //            //    Jane (Mid-level)
-            //            //*/
-            //            Console.WriteLine(interpreter.Interpret(template6, data6));
-
-            //            //// Example 7: Arbitrarily deep variable path reference
-            //            var template7 = @"{{var1.foo.bar.baz}} // expect hello world";
-            //            var data7 = new ExpandoObject();
-            //            var data7Nested = new ExpandoObject();
-            //            var data7DoubleNested = new ExpandoObject();
-            //            var data7TripleNested = new ExpandoObject();
-            //            ((IDictionary<string, object>)data7TripleNested).Add("baz", "hello world");
-            //            ((IDictionary<string, object>)data7DoubleNested).Add("bar", data7TripleNested);
-            //            ((IDictionary<string, object>)data7Nested).Add("foo", data7DoubleNested);
-            //            ((IDictionary<string, object>)data7).Add("var1", data7Nested);
-            //            Console.WriteLine(interpreter.Interpret(template7, data7));
-
-            //            //// Example 8: Call non-existent function
-            //            //var template8 = @"Here is a function: {{myfunction()}}";
-            //            //var data8 = new ExpandoObject();
-            //            //((IDictionary<string, object>)data8).Add("var1", "foo");
-            //            //// Expect this to throw an error
-            //            //Console.WriteLine(interpreter.Interpret(template8, data8));
-
-            //            //// Example 9: Call length function
-            //            var template9 = @"{{length(myArray)}}";
-            //            //var data9notarray = new ExpandoObject();
-            //            //((IDictionary<string, object>)data9notarray).Add("myArray", "hello");
-            //            var data9 = new ExpandoObject();
-            //            var itEmployees1 = new List<ExpandoObject>();
-            //            var empa1 = new ExpandoObject();
-            //            ((IDictionary<string, object>)empa1).Add("name", "John");
-            //            ((IDictionary<string, object>)empa1).Add("salary", 80000);
-            //            ((IDictionary<string, object>)empa1).Add("isTemp", false);
-            //            itEmployees1.Add(empa1);
-            //            var empa2 = new ExpandoObject();
-            //            ((IDictionary<string, object>)empa2).Add("name", "Jane");
-            //            ((IDictionary<string, object>)empa2).Add("salary", 65000);
-            //            ((IDictionary<string, object>)empa2).Add("isTemp", false);
-            //            itEmployees1.Add(empa2);
-            //            ((IDictionary<string, object>)data9).Add("myArray", itEmployees1);
-            //            Console.WriteLine(interpreter.Interpret(template9, data9));
-
-            //            //// Example 10: nested function calls
-            //            var template10 = @"{{concat(""hello"", concat("" "", ""world""))}} // expect hello world";
-            //            var data10 = new ExpandoObject();
-            //            Console.WriteLine(interpreter.Interpret(template10, data10));
-
-            //            ////Example 11: string functions
-            //            var template11 = @"
-            //{{contains(""Hello World"", ""World"")}}        // Returns true
-            //{{startsWith(""Hello World"", ""Hello"")}}      // Returns true
-            //{{endsWith(""Hello World"", ""World"")}}        // Returns true
-            //{{toUpper(""Hello World"")}}                  // Returns ""HELLO WORLD""
-            //{{toLower(""Hello World"")}}                  // Returns ""hello world""
-            //{{trim(""  Hello World  "")}}                 // Returns ""Hello World""
-            //{{indexOf(""Hello World"", ""World"")}}         // Returns 6
-            //{{lastIndexOf(""Hello World World"", ""World"")}} // Returns 12
-            //{{substring(""Hello World"", 6)}}             // Returns ""World""
-            //{{substring(""Hello World"", 0, 5)}}             // Returns ""Hello""
-            //            ";
-            //            var data11 = new ExpandoObject();
-            //            ((IDictionary<string, object>)data11).Add("var1", "Hello World");
-            //            Console.WriteLine(interpreter.Interpret(template11, data11));
-
-            //            ////Example 12: multiple string function calls
-            //            var template12 = @"{{substring(""Hello World"", indexOf(var1, ""W""))}} // Returns ""World""";
-            //            var data12 = new ExpandoObject();
-            //            ((IDictionary<string, object>)data12).Add("var1", "Hello World");
-            //            Console.WriteLine(interpreter.Interpret(template12, data12));
-
-            //            ////Example 13: overloaded contains functions
-            //            var template13 = @"
-            //{{contains(""Hello World"", ""World"")}}     // true
-            //{{contains(""Hello World"", ""foo"")}}     // false
-            //{{contains(user, ""firstName"")}} // true
-            //{{contains(user, ""age"")}}       // false
-            //{{contains(person, ""name"")}}    // true
-            //{{contains(person, ""age"")}}     // false
-            //{{contains(dict, ""key"")}}       // true
-            //{{contains(dict, ""missing"")}}   // false";
-            //            // Regular objects
-            //            var user = new { firstName = "John", lastName = "Doe" };
-            //            // Dynamic objects
-            //            dynamic person = new ExpandoObject();
-            //            person.name = "John";
-            //            // Dictionary objects
-            //            var dict = new Dictionary<string, object> { ["key"] = "value" };
-            //            var data13 = new ExpandoObject();
-            //            ((IDictionary<string, object>)data13).Add("user", user);
-            //            ((IDictionary<string, object>)data13).Add("person", person);
-            //            ((IDictionary<string, object>)data13).Add("dict", dict);
-            //            Console.WriteLine(interpreter.Interpret(template13, data13));
-
-            //            //// Example 14: lambda function
-            //            var template14 = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}} // expect 21AtlantaDecatur";
-            //            var data14 = new ExpandoObject();
-            //            var users = new List<ExpandoObject>();
-            //            var empx1 = new ExpandoObject();
-            //            var locs1 = new List<ExpandoObject>();
-            //            var loc1a = new ExpandoObject();
-            //            var loc1b = new ExpandoObject();
-            //            ((IDictionary<string, object>)loc1a).Add("name", "Atlanta");
-            //            ((IDictionary<string, object>)loc1b).Add("name", "Denver");
-            //            locs1.Add(loc1a);
-            //            locs1.Add(loc1b);
-            //            ((IDictionary<string, object>)empx1).Add("age", "17");
-            //            ((IDictionary<string, object>)empx1).Add("loc", locs1);
-            //            users.Add(empx1);
-            //            var empx2 = new ExpandoObject();
-            //            var locs2 = new List<ExpandoObject>();
-            //            var loc2a = new ExpandoObject();
-            //            var loc2b = new ExpandoObject();
-            //            ((IDictionary<string, object>)loc2a).Add("name", "Atlanta");
-            //            ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
-            //            locs2.Add(loc2a);
-            //            locs2.Add(loc2b);
-            //            ((IDictionary<string, object>)empx2).Add("age", "21");
-            //            ((IDictionary<string, object>)empx2).Add("loc", locs2);
-            //            users.Add(empx2);
-            //            ((IDictionary<string, object>)data14).Add("users", users);
-            //            Console.WriteLine(interpreter.Interpret(template14, data14));
-
-            //            ////Example 15: objects
-            //            var template15 = @"{{obj(name: ""John"", age: 30).name}} // expect John
-            //{{obj(person: obj(name: ""John"", age: 30), active: true).person.age}} // expect 30";
-            //            var data15 = new ExpandoObject();
-            //            Console.WriteLine(interpreter.Interpret(template15, data15));
-
-            //            //Example 16: arrays
-            //            var template16 = @"
-            //{{#each x in []}}{{x}}, {{/each}} // expect nothing
-            //{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}} // expect 1.1, 2, 0.3, 
-            //{{#each x in [""hello world"", ""foo bar""]}}{{x}}, {{/each}} // expect hello world, foo bar, 
-            //{{#each x in [obj(name: ""Jeff""), obj(name: ""Jim"")]}}{{x.name}}, {{/each}} // expect Jeff, Jim, 
-            //{{#each x in [""foo"", 2, ""bar"", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}} // expect foo, 2, bar, false, object,
-            //{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}} // expect 1, list, 4, 
-            //{{#each x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/each}} // expect 1, 2, 3, ";
-            //            var data16 = new ExpandoObject();
-            //            Console.WriteLine(interpreter.Interpret(template16, data16));
-
-            //            //Example 17: operations
-            //            var template17 = @"
-            //{{at([1, 2, 3], 1)}} // expect 2
-            //{{first([1, 2, 3])}} // expect 1
-            //{{last([1, 2, 3])}} // expect 3
-            //{{any([1, 2, 3])}} // expect true
-            //{{any([])}} // expect false
-            //{{if(10 > 11, ""yes"", ""no"")}} // expect no
-            //{{if(10 < 11, ""yes"", ""no"")}} // expect yes
-            //{{join([3.4, false, ""foo""], "" | "")}} // expect 3.4 | false | foo
-            //{{#each x in explode(""a,b,c"", "","")}}{{x}} {{/each}} // expect a b c 
-            //{{#each x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/each}} // expect 2 4 6 
-            //{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}} // expect 10
-            //{{#each x in take([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect foo bar 
-            //{{#each x in skip([""foo"", ""bar"", ""baz""], 2)}}{{x}} {{/each}} // expect baz 
-            //{{#each x in order([4, 7, 2])}}{{x}} {{/each}} // expect 2 4 7 
-            //{{#each x in order([4, 7, 2], false)}}{{x}} {{/each}} // expect 7 4 2 
-            //{{#each x in order([""aaaa"", ""zz"", ""yyy""], ((a, b) => length(a) - length(b)))}}{{x}} {{/each}} // expect zz yyy aaaa 
-            //{{get(obj(name: ""gordon"", age: 22), ""name"")}} // expect gordon
-            //{{#each x in keys(obj(name: ""John"", age: 30, city: ""Atlanta""))}}{{x}} {{/each}} // expect name age city
-            //{{#each key in keys(group([obj(city: ""Atlanta"", name: ""Jeff"", age: 10), 
-            //         obj(city: ""Atlanta"", name: ""Jim"", age: 44), 
-            //         obj(city: ""Denver"", name: ""Cindy"", age: 23)], 
-            //       ""city""))}}{{key}} {{/each}} // expect Atlanta Denver
-            //{{mod(7, 3)}}           // Returns 1
-            //{{floor(3.7)}}         // Returns 3
-            //{{ceil(3.2)}}          // Returns 4
-            //{{round(3.45)}}        // Returns 3
-            //{{round(3.45678, 2)}}  // Returns 3.46
-            //{{string(123.45)}}     // Returns ""123.45""
-            //{{string(true)}}       // Returns ""true""
-            //{{number(""123.45"")}}   // Returns 123.45
-            //{{numeric(""123.45"")}}  // Returns true
-            //{{numeric(""abc"")}}     // Returns false";
-            //            var data17 = new ExpandoObject();
-            //            Console.WriteLine(interpreter.Interpret(template17, data17));
-
-            ////Example 18: lambda invocation and higher order functions
-            //var template18 = @"Square: {{((x) => x * x)(5)}} // expect 25
-            //Regular function call {{concat(""Hello "", ""World"")}} // expect Hello World
-            //Lambda invocation {{((a, b) => a + b)(2, 3)}} // expect 5
-            //Higher-order function {{((f) => f(2))((x) => x * 3)}} // expect 5
-            //Higher-order function {{((f) => f(""Hello"", ""World""))((a, b) => concat(a, b))}} // expect HelloWorld
-            //Higher-order function {{((f) => ((g) => f(g(""hello"", ""world""))))((a) => toUpper(a))((x, y) => concat(x, y))}} // expect HELLOWORLD";
-            //var data18 = new ExpandoObject();
-            //Console.WriteLine(interpreter.Interpret(template18, data18));
-
-            // Example 19: datetime
-            var template19 = @"
-{{ datetime(""2024-01-08 10:10:10"") }} // expect 1/8/2024 10:10:10 AM
-{{ format(datetime(""2024-01-08 10:10:10""), ""yyyy-MM-dd HH:mm:ss"") }} // expect 2024-01-08 10:10:10
-{{ addYears(datetime(""2024-01-08 10:10:10""), 1) }} // expect 1/8/2025 10:10:10 AM
-{{ addMonths(datetime(""2024-01-08 10:10:10""), 6) }} // expect 7/8/2024 10:10:10 AM
-{{ addDays(datetime(""2024-01-08 10:10:10""), 10) }} // expect 1/18/2024 10:10:10 AM
-{{ addHours(datetime(""2024-01-08 10:10:10""), 24) }} // expect 1/9/2024 10:10:10 AM
-{{ addMinutes(datetime(""2024-01-08 10:10:10""), 30) }} // expect 1/8/2024 10:40:10 AM
-{{ addSeconds(datetime(""2024-01-08 10:10:10""), 20) }} // expect 1/8/2024 10:10:30 AM
-{{ now() }}
-{{ utcNow() }}";
-            var data19 = new ExpandoObject();
-            Console.WriteLine(interpreter.Interpret(template19, data19));
         }
     }
 
@@ -350,12 +21,14 @@ namespace TemplateInterpreter
         private readonly Lexer _lexer;
         private readonly Parser _parser;
         private readonly FunctionRegistry _functionRegistry;
+        private readonly ITemplateResolver _templateResolver;
 
-        public Interpreter()
+        public Interpreter(ITemplateResolver templateResolver = null)
         {
             _functionRegistry = new FunctionRegistry();
             _lexer = new Lexer();
             _parser = new Parser(_functionRegistry);
+            _templateResolver = templateResolver;
         }
 
         public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<List<dynamic>, dynamic> implementation)
@@ -367,7 +40,58 @@ namespace TemplateInterpreter
         {
             var tokens = _lexer.Tokenize(template);
             var ast = _parser.Parse(tokens);
+
+            // If we have a template resolver, process includes
+            if (_templateResolver != null)
+            {
+                ast = ProcessIncludes(ast);
+            }
+
             return ast.Evaluate(new ExecutionContext(data, _functionRegistry));
+        }
+
+        private AstNode ProcessIncludes(AstNode node)
+        {
+            // Handle IncludeNode
+            if (node is IncludeNode includeNode)
+            {
+                var templateContent = _templateResolver.ResolveTemplate(includeNode.TemplateName);
+                var tokens = _lexer.Tokenize(templateContent);
+                var includedAst = _parser.Parse(tokens);
+
+                // Process includes in the included template
+                includedAst = ProcessIncludes(includedAst);
+
+                // Set the processed template
+                includeNode.SetIncludedTemplate(includedAst);
+                return includeNode;
+            }
+
+            // Handle TemplateNode
+            if (node is TemplateNode templateNode)
+            {
+                var processedChildren = templateNode.Children.Select(ProcessIncludes).ToList();
+                return new TemplateNode(processedChildren);
+            }
+
+            // Handle IfNode
+            if (node is IfNode ifNode)
+            {
+                var processedBranches = ifNode.ConditionalBranches.Select(branch =>
+                    new IfNode.IfBranch(branch.Condition, ProcessIncludes(branch.Body))).ToList();
+                var processedElse = ifNode.ElseBranch != null ? ProcessIncludes(ifNode.ElseBranch) : null;
+                return new IfNode(processedBranches, processedElse);
+            }
+
+            // Handle EachNode
+            if (node is EachNode eachNode)
+            {
+                var processedBody = ProcessIncludes(eachNode.Body);
+                return new EachNode(eachNode.IteratorName, eachNode.Collection, processedBody);
+            }
+
+            // For all other node types, return as is
+            return node;
         }
     }
 
@@ -593,7 +317,8 @@ namespace TemplateInterpreter
         Dot,               // .
         Field,             // object field name
         LeftBracket,       // [
-        RightBracket       // ]
+        RightBracket,      // ]
+        Include            // #include
     }
 
     public class Lexer
@@ -741,10 +466,11 @@ namespace TemplateInterpreter
                     _tokens.Add(new Token(TokenType.Each, "#each", _position));
                     _position += 5;
                 }
-                else if (TryMatch("in"))
+                else if (TryMatch("#include"))
                 {
-                    _tokens.Add(new Token(TokenType.In, "in", _position));
-                    _position += 2;
+                    _tokens.Add(new Token(TokenType.Include, "#include", _position));
+                    _position += 8;
+                    continue;
                 }
                 else if (TryMatch("#if"))
                 {
@@ -946,6 +672,9 @@ namespace TemplateInterpreter
                 case "false":
                     _tokens.Add(new Token(TokenType.False, value, start));
                     break;
+                case "in":
+                    _tokens.Add(new Token(TokenType.In, value, start));
+                    break;
                 default:
                     _tokens.Add(new Token(TokenType.Variable, value, start));
                     break;
@@ -979,6 +708,34 @@ namespace TemplateInterpreter
     public abstract class AstNode
     {
         public abstract dynamic Evaluate(ExecutionContext context);
+    }
+
+    public class IncludeNode : AstNode
+    {
+        private readonly string _templateName;
+        private AstNode _includedTemplate;
+
+        public IncludeNode(string templateName)
+        {
+            _templateName = templateName;
+            _includedTemplate = null;
+        }
+
+        public string TemplateName { get { return _templateName; } }
+
+        public void SetIncludedTemplate(AstNode template)
+        {
+            _includedTemplate = template;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            if (_includedTemplate == null)
+            {
+                throw new Exception($"Template '{_templateName}' has not been resolved");
+            }
+            return _includedTemplate.Evaluate(context);
+        }
     }
 
     public class TextNode : AstNode
@@ -1344,6 +1101,12 @@ namespace TemplateInterpreter
         private readonly AstNode _collection;
         private readonly AstNode _body;
 
+        public string IteratorName { get { return _iteratorName; } }
+
+        public AstNode Collection { get { return _collection; } }
+
+        public AstNode Body { get { return _body; } }
+
         public EachNode(string iteratorName, AstNode collection, AstNode body)
         {
             _iteratorName = iteratorName;
@@ -1374,6 +1137,10 @@ namespace TemplateInterpreter
     {
         private readonly List<IfBranch> _conditionalBranches;
         private readonly AstNode _elseBranch;
+
+        public List<IfBranch> ConditionalBranches { get { return _conditionalBranches; } }
+
+        public AstNode ElseBranch { get { return _elseBranch;  } }
 
         public class IfBranch
         {
@@ -1421,6 +1188,8 @@ namespace TemplateInterpreter
             _children = children;
         }
 
+        public List<AstNode> Children { get { return _children; } }
+
         public override dynamic Evaluate(ExecutionContext context)
         {
             var result = new StringBuilder();
@@ -1467,7 +1236,11 @@ namespace TemplateInterpreter
                 {
                     // Look at the next token to determine what kind of directive we're dealing with
                     var nextToken = _tokens[_position + 1];
-                    if (nextToken.Type == TokenType.If)
+                    if (nextToken.Type == TokenType.Include)
+                    {
+                        nodes.Add(ParseIncludeStatement());
+                    }
+                    else if (nextToken.Type == TokenType.If)
                     {
                         nodes.Add(ParseIfStatement());
                     }
@@ -1495,6 +1268,20 @@ namespace TemplateInterpreter
             }
 
             return new TemplateNode(nodes);
+        }
+
+        private AstNode ParseIncludeStatement()
+        {
+            Advance(); // Skip {{
+            Advance(); // Skip #include
+
+            var templateName = Expect(TokenType.Variable).Value;
+            Advance();
+
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
+            return new IncludeNode(templateName);
         }
 
         private AstNode ParseExpressionStatement()
@@ -3177,6 +2964,35 @@ namespace TemplateInterpreter
         {
             var result = Convert.ToDecimal(_comparer(new List<dynamic> { x, y }));
             return Math.Sign(result);
+        }
+    }
+
+    public interface ITemplateResolver
+    {
+        string ResolveTemplate(string templateName);
+    }
+
+    public class TemplateRegistry : ITemplateResolver
+    {
+        private readonly Dictionary<string, string> _templates;
+
+        public TemplateRegistry()
+        {
+            _templates = new Dictionary<string, string>();
+        }
+
+        public void RegisterTemplate(string name, string template)
+        {
+            _templates[name] = template;
+        }
+
+        public string ResolveTemplate(string templateName)
+        {
+            if (!_templates.TryGetValue(templateName, out var template))
+            {
+                throw new Exception($"Template '{templateName}' not found");
+            }
+            return template;
         }
     }
 }
