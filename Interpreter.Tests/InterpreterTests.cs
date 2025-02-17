@@ -684,5 +684,122 @@ namespace TemplateInterpreter.Tests
             Assert.That(basicResult.IndexOf("<div class=\"profile\">") < basicResult.IndexOf("<div class=\"basic\">"),
                 "Basic content should be nested inside profile div");
         }
+
+        [Test]
+        public void TestBasicVariableAssignment()
+        {
+            // Template that assigns a value and then outputs it
+            var template = "{{#let x = 2}}{{x}}";
+
+            // Create empty data context
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void TestVariableExpressionAssignment()
+        {
+            // Template that uses a variable in an expression to assign to another variable
+            var template = "{{#let x = 2}}{{#let y = x + 12}}{{y}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("14"));
+        }
+
+        [Test]
+        public void TestLambdaFunctionAssignment()
+        {
+            // Template that defines a lambda function, assigns variables, and uses them
+            var template = @"
+                {{#let f = (a, b) => a * b}}
+                {{#let x = 2}}
+                {{#let y = 14}}
+                {{#let z = f(x, y)}}
+                {{z}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data).Trim();
+            Assert.That(result, Is.EqualTo("28"));
+        }
+
+        [Test]
+        public void TestVariableRedefinitionThrowsException()
+        {
+            var template = "{{#let x = 2}}{{#let x = 3}}";
+            dynamic data = new ExpandoObject();
+
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Should throw exception when trying to redefine variable");
+        }
+
+        [Test]
+        public void TestVariableConflictWithDataContextThrowsException()
+        {
+            var template = "{{#let existingField = 2}}";
+
+            dynamic data = new ExpandoObject();
+            var dict = (IDictionary<string, object>)data;
+            dict["existingField"] = 1;
+
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Should throw exception when variable name conflicts with data context");
+        }
+
+        [Test]
+        public void TestVariableConflictWithIteratorThrowsException()
+        {
+            var template = @"
+                {{#for item in [1,2,3]}}
+                    {{#let item = 2}}
+                {{/for}}";
+
+            dynamic data = new ExpandoObject();
+
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Should throw exception when variable name conflicts with iterator");
+        }
+
+        [Test]
+        public void TestVariableScopeInNestedStructures()
+        {
+            var template = @"{{#let x = 1}}{{#for item in [1,2]}}{{#let y = x + item}}{{y}}{{/for}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data).Trim();
+            Assert.That(result, Is.EqualTo("23")); // Should output "2" then "3"
+        }
+
+        [Test]
+        public void TestComplexExpressionAssignment()
+        {
+            var template = @"
+                {{#let x = 10}}
+                {{#let y = 5}}
+                {{#let z = (x * y) + (x / y)}}
+                {{z}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data).Trim();
+            Assert.That(result, Is.EqualTo("52")); // (10 * 5) + (10 / 5) = 50 + 2 = 52
+        }
+
+        [Test]
+        public void TestLambdaClosureAccessToVariables()
+        {
+            // Template that defines a variable and then uses it within a lambda
+            var template = @"{{#let x = 2}}{{((a) => a * x)(3)}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data).Trim();
+            Assert.That(result, Is.EqualTo("6")); // 3 * 2 = 6
+        }
     }
 }

@@ -99,23 +99,58 @@ namespace TemplateInterpreter
     {
         private readonly dynamic _data;
         private readonly Dictionary<string, dynamic> _iteratorValues;
+        private readonly Dictionary<string, dynamic> _variables;
         private readonly FunctionRegistry _functionRegistry;
 
         public ExecutionContext(dynamic data, FunctionRegistry functionRegistry)
         {
             _data = data;
             _iteratorValues = new Dictionary<string, dynamic>();
+            _variables = new Dictionary<string, dynamic>();
             _functionRegistry = functionRegistry;
+        }
+
+        public void DefineVariable(string name, dynamic value)
+        {
+            // Check if already defined as a variable
+            if (_variables.ContainsKey(name))
+            {
+                throw new Exception($"Variable '{name}' is already defined");
+            }
+
+            // Check if defined as an iterator value
+            if (_iteratorValues.ContainsKey(name))
+            {
+                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing iterator");
+            }
+
+            // Check if defined in the data context
+            if (TryResolveValue(name, out _))
+            {
+                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing data field");
+            }
+
+            // If we get here, the name is safe to use
+            _variables[name] = value;
         }
 
         public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value)
         {
             var newContext = new ExecutionContext(_data, _functionRegistry);
+
+            // Copy variables to new context
+            foreach (var variable in _variables)
+            {
+                newContext._variables.Add(variable.Key, variable.Value);
+            }
+
+            // Copy iterators to new context
             newContext._iteratorValues.Add(iteratorName, value);
             foreach (var key in _iteratorValues.Keys)
             {
                 newContext._iteratorValues.Add(key, _iteratorValues[key]);
             }
+
             return newContext;
         }
 
@@ -139,6 +174,11 @@ namespace TemplateInterpreter
             if (_iteratorValues.ContainsKey(parts[0]))
             {
                 current = _iteratorValues[parts[0]];
+                parts = parts.Skip(1).ToArray();
+            }
+            else if (_variables.ContainsKey(parts[0]))
+            {
+                current = _variables[parts[0]];
                 parts = parts.Skip(1).ToArray();
             }
             else
@@ -287,7 +327,7 @@ namespace TemplateInterpreter
         True,              // true
         False,             // false
         Not,               // !
-        Equal,             // =
+        Equal,             // ==
         NotEqual,          // !=
         LessThan,          // <
         LessThanEqual,     // <=
@@ -308,6 +348,8 @@ namespace TemplateInterpreter
         Else,              // #else
         EndFor,            // /for
         EndIf,             // /if
+        Let,               // #let
+        Assignment,        // =
         Function,          // function name
         Comma,             // ,
         Arrow,             // =>
@@ -461,6 +503,12 @@ namespace TemplateInterpreter
                 }
 
                 // Match keywords and operators
+                if (TryMatch("#let"))
+                {
+                    _tokens.Add(new Token(TokenType.Let, "#let", _position));
+                    _position += 4;
+                    continue;
+                }
                 if (TryMatch("#for"))
                 {
                     _tokens.Add(new Token(TokenType.For, "#for", _position));
@@ -511,6 +559,11 @@ namespace TemplateInterpreter
                 {
                     _tokens.Add(new Token(TokenType.Equal, "==", _position));
                     _position += 2;
+                }
+                else if (TryMatch("="))
+                {
+                    _tokens.Add(new Token(TokenType.Assignment, "=", _position));
+                    _position++;
                 }
                 else if (TryMatch("!="))
                 {
@@ -802,13 +855,24 @@ namespace TemplateInterpreter
                     }
                 }
 
+                // Check if this is a variable that contains a function
+                if (context.TryResolveValue(functionInfo.Name, out var variableValue))
+                {
+                    if (variableValue is Func<List<dynamic>, dynamic> variableFunc)
+                    {
+                        return variableFunc(evaluatedArgs);
+                    }
+                }
+
                 // If not a parameter in any context or parameter isn't a function, try the registry
                 registry = context.GetFunctionRegistry();
                 if (!registry.TryGetFunction(functionInfo.Name, evaluatedArgs, out var func, out var effArgs))
                 {
                     throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
                 }
+
                 registry.ValidateArguments(func, effArgs);
+
                 return func.Implementation(effArgs);
             }
 
@@ -872,6 +936,25 @@ namespace TemplateInterpreter
                 var lambdaContext = new LambdaExecutionContext(context, _parameters, args);
                 return _expression.Evaluate(lambdaContext);
             });
+        }
+    }
+
+    public class LetNode : AstNode
+    {
+        private readonly string _variableName;
+        private readonly AstNode _expression;
+
+        public LetNode(string variableName, AstNode expression)
+        {
+            _variableName = variableName;
+            _expression = expression;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            var value = _expression.Evaluate(context);
+            context.DefineVariable(_variableName, value);
+            return string.Empty; // Let statements don't produce output
         }
     }
 
@@ -1140,7 +1223,7 @@ namespace TemplateInterpreter
 
         public List<IfBranch> ConditionalBranches { get { return _conditionalBranches; } }
 
-        public AstNode ElseBranch { get { return _elseBranch;  } }
+        public AstNode ElseBranch { get { return _elseBranch; } }
 
         public class IfBranch
         {
@@ -1236,7 +1319,12 @@ namespace TemplateInterpreter
                 {
                     // Look at the next token to determine what kind of directive we're dealing with
                     var nextToken = _tokens[_position + 1];
-                    if (nextToken.Type == TokenType.Include)
+
+                    if (nextToken.Type == TokenType.Let)
+                    {
+                        nodes.Add(ParseLetStatement());
+                    }
+                    else if (nextToken.Type == TokenType.Include)
                     {
                         nodes.Add(ParseIncludeStatement());
                     }
@@ -1268,6 +1356,25 @@ namespace TemplateInterpreter
             }
 
             return new TemplateNode(nodes);
+        }
+
+        private AstNode ParseLetStatement()
+        {
+            Advance(); // Skip {{
+            Advance(); // Skip #let
+
+            var variableName = Expect(TokenType.Variable).Value;
+            Advance();
+
+            Expect(TokenType.Assignment);
+            Advance();
+
+            var expression = ParseExpression();
+
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
+            return new LetNode(variableName, expression);
         }
 
         private AstNode ParseIncludeStatement()
