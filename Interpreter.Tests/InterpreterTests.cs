@@ -686,7 +686,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestBasicVariableAssignment()
+        public void BasicVariableAssignment()
         {
             // Template that assigns a value and then outputs it
             var template = "{{#let x = 2}}{{x}}";
@@ -699,7 +699,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestVariableExpressionAssignment()
+        public void VariableExpressionAssignment()
         {
             // Template that uses a variable in an expression to assign to another variable
             var template = "{{#let x = 2}}{{#let y = x + 12}}{{y}}";
@@ -711,7 +711,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestLambdaFunctionAssignment()
+        public void LambdaFunctionAssignment()
         {
             // Template that defines a lambda function, assigns variables, and uses them
             var template = @"
@@ -728,7 +728,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestVariableRedefinitionThrowsException()
+        public void VariableRedefinitionThrowsException()
         {
             var template = "{{#let x = 2}}{{#let x = 3}}";
             dynamic data = new ExpandoObject();
@@ -738,7 +738,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestVariableConflictWithDataContextThrowsException()
+        public void VariableConflictWithDataContextThrowsException()
         {
             var template = "{{#let existingField = 2}}";
 
@@ -751,7 +751,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestVariableConflictWithIteratorThrowsException()
+        public void VariableConflictWithIteratorThrowsException()
         {
             var template = @"
                 {{#for item in [1,2,3]}}
@@ -765,7 +765,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestVariableScopeInNestedStructures()
+        public void VariableScopeInNestedStructures()
         {
             var template = @"{{#let x = 1}}{{#for item in [1,2]}}{{#let y = x + item}}{{y}}{{/for}}";
 
@@ -776,7 +776,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestComplexExpressionAssignment()
+        public void ComplexExpressionAssignment()
         {
             var template = @"
                 {{#let x = 10}}
@@ -791,7 +791,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestLambdaAccessToVariables()
+        public void LambdaAccessToVariables()
         {
             // Template that defines a variable and then uses it within a lambda
             var template = @"{{#let x = 2}}{{((a) => a * x)(3)}}";
@@ -803,7 +803,7 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestLambdaClosures()
+        public void LambdaClosures()
         {
             // Template that defines a variable and then uses it within a lambda
             var template = @"{{#let x = 2}}{{#let f = ((a) => (() => a * x))}}{{f(3)()}}";
@@ -812,6 +812,38 @@ namespace TemplateInterpreter.Tests
 
             var result = _interpreter.Interpret(template, data).Trim();
             Assert.That(result, Is.EqualTo("6")); // 3 * 2 = 6
+        }
+
+        [Test]
+        public void IteratorVariableNameConflicts()
+        {
+            // Test case 1: Iterator conflicts with existing variable
+            var template1 = @"
+            {{#let item = 5}}
+            {{#for item in [1,2,3]}}
+                {{item}}
+            {{/for}}";
+
+            dynamic data = new ExpandoObject();
+
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template1, data),
+                "Should throw exception when iterator name conflicts with existing variable");
+
+            // Test case 2: Variable conflicts with existing iterator
+            var template2 = @"
+            {{#for item in [1,2,3]}}
+                {{#let item = 5}}
+                {{item}}
+            {{/for}}";
+
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template2, data),
+                "Should throw exception when variable name conflicts with existing iterator");
+
+            // Test case 3: Verify proper nested loops with different iterator names work
+            var template3 = @"{{#for i in [1,2]}}{{#for j in [3,4]}}{{i * j}}{{/for}}{{/for}}";
+
+            var result = _interpreter.Interpret(template3, data).Trim();
+            Assert.That(result, Is.EqualTo("3468")); // Should output: 3,4,6,8
         }
     }
 }

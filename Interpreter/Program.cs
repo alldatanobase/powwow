@@ -1199,6 +1199,12 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
+            // Check if iterator name conflicts with existing variable
+            if (context.TryResolveValue(_iteratorName, out _))
+            {
+                throw new Exception($"Iterator name '{_iteratorName}' conflicts with an existing variable or field");
+            }
+
             var collection = _collection.Evaluate(context);
             if (!(collection is System.Collections.IEnumerable))
             {
