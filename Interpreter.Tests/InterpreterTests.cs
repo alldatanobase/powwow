@@ -791,10 +791,22 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
-        public void TestLambdaClosureAccessToVariables()
+        public void TestLambdaAccessToVariables()
         {
             // Template that defines a variable and then uses it within a lambda
             var template = @"{{#let x = 2}}{{((a) => a * x)(3)}}";
+
+            dynamic data = new ExpandoObject();
+
+            var result = _interpreter.Interpret(template, data).Trim();
+            Assert.That(result, Is.EqualTo("6")); // 3 * 2 = 6
+        }
+
+        [Test]
+        public void TestLambdaClosures()
+        {
+            // Template that defines a variable and then uses it within a lambda
+            var template = @"{{#let x = 2}}{{#let f = ((a) => (() => a * x))}}{{f(3)()}}";
 
             dynamic data = new ExpandoObject();
 
