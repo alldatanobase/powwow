@@ -83,11 +83,11 @@ namespace TemplateInterpreter
                 return new IfNode(processedBranches, processedElse);
             }
 
-            // Handle EachNode
-            if (node is EachNode eachNode)
+            // Handle ForNode
+            if (node is ForNode forNode)
             {
-                var processedBody = ProcessIncludes(eachNode.Body);
-                return new EachNode(eachNode.IteratorName, eachNode.Collection, processedBody);
+                var processedBody = ProcessIncludes(forNode.Body);
+                return new ForNode(forNode.IteratorName, forNode.Collection, processedBody);
             }
 
             // For all other node types, return as is
@@ -301,12 +301,12 @@ namespace TemplateInterpreter
         Divide,            // /
         LeftParen,         // (
         RightParen,        // )
-        Each,              // #each
+        For,               // #for
         In,                // in
         If,                // #if
         ElseIf,            // #elseif
         Else,              // #else
-        EndEach,           // /each
+        EndFor,            // /for
         EndIf,             // /if
         Function,          // function name
         Comma,             // ,
@@ -461,10 +461,10 @@ namespace TemplateInterpreter
                 }
 
                 // Match keywords and operators
-                if (TryMatch("#each"))
+                if (TryMatch("#for"))
                 {
-                    _tokens.Add(new Token(TokenType.Each, "#each", _position));
-                    _position += 5;
+                    _tokens.Add(new Token(TokenType.For, "#for", _position));
+                    _position += 4;
                 }
                 else if (TryMatch("#include"))
                 {
@@ -487,10 +487,10 @@ namespace TemplateInterpreter
                     _tokens.Add(new Token(TokenType.Else, "#else", _position));
                     _position += 5;
                 }
-                else if (TryMatch("/each"))
+                else if (TryMatch("/for"))
                 {
-                    _tokens.Add(new Token(TokenType.EndEach, "/each", _position));
-                    _position += 5;
+                    _tokens.Add(new Token(TokenType.EndFor, "/for", _position));
+                    _position += 4;
                 }
                 else if (TryMatch("/if"))
                 {
@@ -1095,7 +1095,7 @@ namespace TemplateInterpreter
         }
     }
 
-    public class EachNode : AstNode
+    public class ForNode : AstNode
     {
         private readonly string _iteratorName;
         private readonly AstNode _collection;
@@ -1107,7 +1107,7 @@ namespace TemplateInterpreter
 
         public AstNode Body { get { return _body; } }
 
-        public EachNode(string iteratorName, AstNode collection, AstNode body)
+        public ForNode(string iteratorName, AstNode collection, AstNode body)
         {
             _iteratorName = iteratorName;
             _collection = collection;
@@ -1244,14 +1244,14 @@ namespace TemplateInterpreter
                     {
                         nodes.Add(ParseIfStatement());
                     }
-                    else if (nextToken.Type == TokenType.Each)
+                    else if (nextToken.Type == TokenType.For)
                     {
-                        nodes.Add(ParseEachStatement());
+                        nodes.Add(ParseForStatement());
                     }
                     else if (nextToken.Type == TokenType.ElseIf ||
                              nextToken.Type == TokenType.Else ||
                              nextToken.Type == TokenType.EndIf ||
-                             nextToken.Type == TokenType.EndEach)
+                             nextToken.Type == TokenType.EndFor)
                     {
                         // We've hit a closing directive - return control to the parent parser
                         break;
@@ -1509,10 +1509,10 @@ namespace TemplateInterpreter
             return new IfNode(conditionalBranches, elseBranch);
         }
 
-        private AstNode ParseEachStatement()
+        private AstNode ParseForStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #each
+            Advance(); // Skip #for
             var iteratorName = Expect(TokenType.Variable).Value;
             Advance();
 
@@ -1525,15 +1525,15 @@ namespace TemplateInterpreter
 
             var body = ParseTemplate();
 
-            // Handle the closing each tag
+            // Handle the closing for tag
             Expect(TokenType.DirectiveStart);
             Advance(); // Skip {{
-            Expect(TokenType.EndEach);
-            Advance(); // Skip /each
+            Expect(TokenType.EndFor);
+            Advance(); // Skip /for
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new EachNode(iteratorName, collection, body);
+            return new ForNode(iteratorName, collection, body);
         }
 
         private AstNode ParseExpression()

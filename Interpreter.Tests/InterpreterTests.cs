@@ -85,11 +85,11 @@ namespace TemplateInterpreter.Tests
             // Arrange
             var template = @"
             Users with high scores:
-            {{#each user in users}}
+            {{#for user in users}}
                 {{#if user.score > 80 && (user.age >= 18 || user.region = ""EU"")}}
                     {{user.name}} ({{user.score}})
                 {{/if}}
-            {{/each}}";
+            {{/for}}";
 
             var data = new ExpandoObject();
             var usersList = new List<ExpandoObject>();
@@ -149,9 +149,9 @@ namespace TemplateInterpreter.Tests
         {
             // Arrange
             var template = @"
-            {{#each department in departments}}
+            {{#for department in departments}}
             Department: {{department.name}}
-                {{#each employee in department.employees}}
+                {{#for employee in department.employees}}
                     {{#if employee.salary > department.avgSalary && !employee.isTemp}}
                         {{employee.name}} (Senior)
                     {{#elseif employee.salary > department.avgSalary * 0.8}}
@@ -159,8 +159,8 @@ namespace TemplateInterpreter.Tests
                     {{#else}}
                         {{employee.name}} (Junior)
                     {{/if}}
-                {{/each}}
-            {{/each}}";
+                {{/for}}
+            {{/for}}";
 
             var data = new ExpandoObject();
             var deptList = new List<ExpandoObject>();
@@ -283,7 +283,7 @@ namespace TemplateInterpreter.Tests
         public void LambdaFunction()
         {
             // Arrange
-            var template = @"{{#each user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#each loc in user.loc}}{{loc.name}}{{/each}}{{/each}}";
+            var template = @"{{#for user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#for loc in user.loc}}{{loc.name}}{{/for}}{{/for}}";
             var data = new ExpandoObject();
             var users = new List<ExpandoObject>();
 
@@ -358,13 +358,13 @@ namespace TemplateInterpreter.Tests
             // Arrange
             var templates = new Dictionary<string, string>
             {
-                {"emptyArray", "{{#each x in []}}{{x}}, {{/each}}"},
-                {"numericArray", "{{#each x in [1.1, 2, 0.3]}}{{x}}, {{/each}}"},
-                {"stringArray", "{{#each x in [\"hello world\", \"foo bar\"]}}{{x}}, {{/each}}"},
-                {"objectArray", "{{#each x in [obj(name: \"Jeff\"), obj(name: \"Jim\")]}}{{x.name}}, {{/each}}"},
-                {"mixedArray", "{{#each x in [\"foo\", 2, \"bar\", false, obj(x: 1, y: 2)]}}{{x}}, {{/each}}"},
-                {"nestedArray", "{{#each x in [1, [2, 3], 4]}}{{x}}, {{/each}}"},
-                {"objectPropertyArray", "{{#each x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/each}}"}
+                {"emptyArray", "{{#for x in []}}{{x}}, {{/for}}"},
+                {"numericArray", "{{#for x in [1.1, 2, 0.3]}}{{x}}, {{/for}}"},
+                {"stringArray", "{{#for x in [\"hello world\", \"foo bar\"]}}{{x}}, {{/for}}"},
+                {"objectArray", "{{#for x in [obj(name: \"Jeff\"), obj(name: \"Jim\")]}}{{x.name}}, {{/for}}"},
+                {"mixedArray", "{{#for x in [\"foo\", 2, \"bar\", false, obj(x: 1, y: 2)]}}{{x}}, {{/for}}"},
+                {"nestedArray", "{{#for x in [1, [2, 3], 4]}}{{x}}, {{/for}}"},
+                {"objectPropertyArray", "{{#for x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/for}}"}
             };
 
             // Act & Assert
@@ -412,20 +412,20 @@ namespace TemplateInterpreter.Tests
             Assert.That(_interpreter.Interpret("{{any([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("True"));
             Assert.That(_interpreter.Interpret("{{any([])}}", new ExpandoObject()), Is.EqualTo("False"));
             Assert.That(_interpreter.Interpret("{{join([3.4, false, \"foo\"], \" | \")}}", new ExpandoObject()), Is.EqualTo("3.4 | False | foo"));
-            Assert.That(_interpreter.Interpret("{{#each x in explode(\"a,b,c\", \",\")}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("a b c "));
-            Assert.That(_interpreter.Interpret("{{#each x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("2 4 6 "));
+            Assert.That(_interpreter.Interpret("{{#for x in explode(\"a,b,c\", \",\")}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("a b c "));
+            Assert.That(_interpreter.Interpret("{{#for x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 6 "));
             Assert.That(_interpreter.Interpret("{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}}", new ExpandoObject()), Is.EqualTo("10"));
-            Assert.That(_interpreter.Interpret("{{#each x in take([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("foo bar "));
-            Assert.That(_interpreter.Interpret("{{#each x in skip([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("baz "));
+            Assert.That(_interpreter.Interpret("{{#for x in take([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("foo bar "));
+            Assert.That(_interpreter.Interpret("{{#for x in skip([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("baz "));
         }
 
         [Test]
         public void OrderingOperations()
         {
             // Arrange & Act & Assert
-            Assert.That(_interpreter.Interpret("{{#each x in order([4, 7, 2])}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("2 4 7 "));
-            Assert.That(_interpreter.Interpret("{{#each x in order([4, 7, 2], false)}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("7 4 2 "));
-            Assert.That(_interpreter.Interpret("{{#each x in order([\"aaaa\", \"zz\", \"yyy\"], ((a, b) => length(a) - length(b)))}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("zz yyy aaaa "));
+            Assert.That(_interpreter.Interpret("{{#for x in order([4, 7, 2])}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 7 "));
+            Assert.That(_interpreter.Interpret("{{#for x in order([4, 7, 2], false)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("7 4 2 "));
+            Assert.That(_interpreter.Interpret("{{#for x in order([\"aaaa\", \"zz\", \"yyy\"], ((a, b) => length(a) - length(b)))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("zz yyy aaaa "));
         }
 
         [Test]
@@ -433,13 +433,13 @@ namespace TemplateInterpreter.Tests
         {
             // Arrange & Act & Assert
             Assert.That(_interpreter.Interpret("{{get(obj(name: \"gordon\", age: 22), \"name\")}}", new ExpandoObject()), Is.EqualTo("gordon"));
-            Assert.That(_interpreter.Interpret("{{#each x in keys(obj(name: \"John\", age: 30, city: \"Atlanta\"))}}{{x}} {{/each}}", new ExpandoObject()), Is.EqualTo("name age city "));
+            Assert.That(_interpreter.Interpret("{{#for x in keys(obj(name: \"John\", age: 30, city: \"Atlanta\"))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("name age city "));
 
-            var groupTemplate = "{{#each key in keys(group([" +
+            var groupTemplate = "{{#for key in keys(group([" +
                 "obj(city: \"Atlanta\", name: \"Jeff\", age: 10), " +
                 "obj(city: \"Atlanta\", name: \"Jim\", age: 44), " +
                 "obj(city: \"Denver\", name: \"Cindy\", age: 23)], " +
-                "\"city\"))}}{{key}} {{/each}}";
+                "\"city\"))}}{{key}} {{/for}}";
             Assert.That(_interpreter.Interpret(groupTemplate, new ExpandoObject()), Is.EqualTo("Atlanta Denver "));
         }
 
@@ -574,9 +574,9 @@ namespace TemplateInterpreter.Tests
             // Register templates
             registry.RegisterTemplate("list", @"
 <ul>
-    {{#each item in items}}
+    {{#for item in items}}
         {{#include listitem}}
-    {{/each}}
+    {{/for}}
 </ul>");
 
             registry.RegisterTemplate("listitem", @"
