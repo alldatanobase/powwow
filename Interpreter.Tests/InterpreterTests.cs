@@ -35,7 +35,7 @@ namespace TemplateInterpreter.Tests
         public void ComplexBooleanLogic()
         {
             // Arrange
-            var template = "{{!(var1 = \"test\" && (var2 > 2 || var3.x < 0))}}";
+            var template = "{{!(var1 == \"test\" && (var2 > 2 || var3.x < 0))}}";
             var data = new ExpandoObject();
             var dataDict = (IDictionary<string, object>)data;
             dataDict.Add("var1", "test");
@@ -56,7 +56,7 @@ namespace TemplateInterpreter.Tests
         {
             // Arrange
             var template = @"
-            {{#if var1 = ""test""}}
+            {{#if var1 == ""test""}}
                 Outer if true
                 {{#if var2 * 2 >= 5}}
                     Inner if also true
@@ -86,7 +86,7 @@ namespace TemplateInterpreter.Tests
             var template = @"
             Users with high scores:
             {{#for user in users}}
-                {{#if user.score > 80 && (user.age >= 18 || user.region = ""EU"")}}
+                {{#if user.score > 80 && (user.age >= 18 || user.region == ""EU"")}}
                     {{user.name}} ({{user.score}})
                 {{/if}}
             {{/for}}";
@@ -126,7 +126,7 @@ namespace TemplateInterpreter.Tests
             // Arrange
             var template = @"
             {{ (var1 * 2 + var2) / var3.x }}
-            {{ ((var1 > var2) = (var3.x < 5)) && !(var2 = 2.5) }}";
+            {{ ((var1 > var2) == (var3.x < 5)) && !(var2 == 2.5) }}";
 
             var data = new ExpandoObject();
             var dataDict = (IDictionary<string, object>)data;
@@ -283,7 +283,7 @@ namespace TemplateInterpreter.Tests
         public void LambdaFunction()
         {
             // Arrange
-            var template = @"{{#for user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name = ""Atlanta"")) > 0)}}{{user.age}}{{#for loc in user.loc}}{{loc.name}}{{/for}}{{/for}}";
+            var template = @"{{#for user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name == ""Atlanta"")) > 0)}}{{user.age}}{{#for loc in user.loc}}{{loc.name}}{{/for}}{{/for}}";
             var data = new ExpandoObject();
             var users = new List<ExpandoObject>();
 

@@ -507,6 +507,11 @@ namespace TemplateInterpreter
                     _tokens.Add(new Token(TokenType.LessThanEqual, "<=", _position));
                     _position += 2;
                 }
+                else if (TryMatch("=="))
+                {
+                    _tokens.Add(new Token(TokenType.Equal, "==", _position));
+                    _position += 2;
+                }
                 else if (TryMatch("!="))
                 {
                     _tokens.Add(new Token(TokenType.NotEqual, "!=", _position));
@@ -530,11 +535,6 @@ namespace TemplateInterpreter
                 else if (TryMatch("<"))
                 {
                     _tokens.Add(new Token(TokenType.LessThan, "<", _position));
-                    _position++;
-                }
-                else if (TryMatch("="))
-                {
-                    _tokens.Add(new Token(TokenType.Equal, "=", _position));
                     _position++;
                 }
                 else if (TryMatch("!"))
