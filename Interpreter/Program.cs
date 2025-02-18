@@ -361,7 +361,9 @@ namespace TemplateInterpreter
         RightBracket,      // ]
         Include,           // #include
         Literal,           // #literal
-        EndLiteral         // /literal
+        EndLiteral,        // /literal
+        Capture,           // #capture
+        EndCapture         // /capture
     }
 
     public class Lexer
@@ -594,6 +596,18 @@ namespace TemplateInterpreter
                 {
                     _tokens.Add(new Token(TokenType.Let, "#let", _position));
                     _position += 4;
+                    continue;
+                }
+                else if (TryMatch("#capture"))
+                {
+                    _tokens.Add(new Token(TokenType.Capture, "#capture", _position));
+                    _position += 8;
+                    continue;
+                }
+                else if (TryMatch("/capture"))
+                {
+                    _tokens.Add(new Token(TokenType.EndCapture, "/capture", _position));
+                    _position += 8;
                     continue;
                 }
                 else if (TryMatch("#for"))
@@ -1106,6 +1120,25 @@ namespace TemplateInterpreter
         }
     }
 
+    public class CaptureNode : AstNode
+    {
+        private readonly string _variableName;
+        private readonly AstNode _body;
+
+        public CaptureNode(string variableName, AstNode body)
+        {
+            _variableName = variableName;
+            _body = body;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            var result = _body.Evaluate(context);
+            context.DefineVariable(_variableName, result.ToString());
+            return string.Empty; // Capture doesn't output anything directly
+        }
+    }
+
     public class ObjectCreationNode : AstNode
     {
         private readonly List<KeyValuePair<string, AstNode>> _fields;
@@ -1478,6 +1511,10 @@ namespace TemplateInterpreter
                     {
                         nodes.Add(ParseLetStatement());
                     }
+                    else if (nextToken.Type == TokenType.Capture)
+                    {
+                        nodes.Add(ParseCaptureStatement());
+                    }
                     else if (nextToken.Type == TokenType.Literal)
                     {
                         nodes.Add(ParseLiteralStatement());
@@ -1497,8 +1534,13 @@ namespace TemplateInterpreter
                     else if (nextToken.Type == TokenType.ElseIf ||
                              nextToken.Type == TokenType.Else ||
                              nextToken.Type == TokenType.EndIf ||
-                             nextToken.Type == TokenType.EndFor)
+                             nextToken.Type == TokenType.EndFor ||
+                             nextToken.Type == TokenType.EndCapture)
                     {
+                        if (_position == 0)
+                        {
+                            throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
+                        }
                         // We've hit a closing directive - return control to the parent parser
                         break;
                     }
@@ -1533,6 +1575,30 @@ namespace TemplateInterpreter
             Advance(); // Skip }}
 
             return new LetNode(variableName, expression);
+        }
+
+        private AstNode ParseCaptureStatement()
+        {
+            Advance(); // Skip {{
+            Advance(); // Skip #capture
+
+            var variableName = Expect(TokenType.Variable).Value;
+            Advance();
+
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
+            var body = ParseTemplate();
+
+            // Parse the closing capture tag
+            Expect(TokenType.DirectiveStart);
+            Advance(); // Skip {{
+            Expect(TokenType.EndCapture);
+            Advance(); // Skip /capture
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
+            return new CaptureNode(variableName, body);
         }
 
         private AstNode ParseLiteralStatement()

@@ -1255,5 +1255,198 @@ Line 3
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("\r\nLine 1\r\nLine 2\r\nLine 3\r\n"));
         }
+
+        [Test]
+        public void BasicCapture_SimpleText_CapturesCorrectly()
+        {
+            // Arrange
+            var template = "{{#capture x}}Hello World{{/capture}}Captured: {{x}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Captured: Hello World"));
+        }
+
+        [Test]
+        public void Capture_WithExpression_CapturesEvaluatedResult()
+        {
+            // Arrange
+            var template = "{{#capture x}}{{2 + 3}}{{/capture}}Result: {{x}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Result: 5"));
+        }
+
+        [Test]
+        public void Capture_WithForLoop_CapturesIterationResults()
+        {
+            // Arrange
+            var template = "{{#capture x}}{{#for i in [1, 2, 3]}}{{i}},{{/for}}{{/capture}}Numbers: {{x}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Numbers: 1,2,3,"));
+        }
+
+        [Test]
+        public void NestedCaptures_CaptureCorrectly()
+        {
+            // Arrange
+            var template = @"{{#capture outer}}{{#capture inner}}nested content{{/capture}}Outer with {{inner}}{{/capture}}Result: {{outer}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data).Trim();
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Result: Outer with nested content"));
+        }
+
+        [Test]
+        public void Capture_WithConditional_CapturesCorrectBranch()
+        {
+            // Arrange
+            var template = @"{{#capture result}}{{#if true}}true branch{{#else}}false branch{{/if}}{{/capture}}Got: {{result}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data).Trim();
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Got: true branch"));
+        }
+
+        [Test]
+        public void Capture_WithData_CanAccessContextData()
+        {
+            // Arrange
+            var template = "{{#capture x}}Name: {{user.name}}{{/capture}}Captured: {{x}}";
+            dynamic data = new ExpandoObject();
+            ((IDictionary<string, object>)data).Add("user", new { name = "John" });
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Captured: Name: John"));
+        }
+
+        [Test]
+        public void Capture_WithSameVariableName_ThrowsError()
+        {
+            // Arrange
+            var template = @"
+                {{#capture x}}first{{/capture}}
+                {{#capture x}}second{{/capture}}
+                Value: {{x}}";
+            dynamic data = new ExpandoObject();
+
+            // Act Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+        }
+
+        [Test]
+        public void Capture_WithWhitespace_PreservesWhitespace()
+        {
+            // Arrange
+            var template = "{{#capture x}}  spaced  content  {{/capture}}[{{x}}]";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("[  spaced  content  ]"));
+        }
+
+        [Test]
+        public void Capture_EmptyContent_CapturesEmptyString()
+        {
+            // Arrange
+            var template = "{{#capture x}}{{/capture}}Empty:[{{x}}]";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Empty:[]"));
+        }
+
+        [Test]
+        public void MissingEndCapture_ThrowsException()
+        {
+            // Arrange
+            var template = "{{#capture x}}unclosed";
+            dynamic data = new ExpandoObject();
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+        }
+
+        [Test]
+        public void Capture_WithoutVariableName_ThrowsException()
+        {
+            // Arrange
+            var template = "{{#capture}}content{{/capture}}";
+            dynamic data = new ExpandoObject();
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+        }
+
+        [Test]
+        public void EndCaptureWithoutStart_ThrowsException()
+        {
+            // Arrange
+            var template = "{{/for}}";
+            dynamic data = new ExpandoObject();
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+        }
+
+        [Test]
+        public void Capture_VariableScope_RespectsScopingRules()
+        {
+            // Arrange
+            var template = @"{{#capture outer}}{{#for i in [1]}}{{#capture inner}}Inner Content{{/capture}}In loop: {{inner}}{{/for}}{{/capture}}After loop: {{outer}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data).Trim();
+
+            // Assert
+            Assert.That(result, Is.EqualTo("After loop: In loop: Inner Content"));
+        }
+
+        [Test]
+        public void Capture_WithFunctionCall_CapturesFunctionResult()
+        {
+            // Arrange
+            _interpreter.RegisterFunction(
+                "greet",
+                new List<ParameterDefinition> { new ParameterDefinition(typeof(string)) },
+                args => $"Hello, {args[0]}!");
+
+            var template = "{{#capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Message: Hello, World!"));
+        }
     }
 }
