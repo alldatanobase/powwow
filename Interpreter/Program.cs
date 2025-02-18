@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Dynamic;
 using System.Linq;
 using System.Text;
@@ -435,7 +434,7 @@ namespace TemplateInterpreter
 
                 if (!TryMatch("}}"))
                 {
-                    throw new Exception("Unterminated directive");
+                    throw new Exception("Unterminated literal directive");
                 }
                 _position += 2; // Skip }}
 
