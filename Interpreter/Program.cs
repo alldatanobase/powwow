@@ -382,7 +382,12 @@ namespace TemplateInterpreter
 
             while (_position < _input.Length)
             {
-                if (TryMatch("{{"))
+                if (TryMatch("{{*"))
+                {
+                    SkipComment();
+                    continue;
+                }
+                else if (TryMatch("{{"))
                 {
                     _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
                     _position += 2;
@@ -395,6 +400,24 @@ namespace TemplateInterpreter
             }
 
             return _tokens;
+        }
+
+        private void SkipComment()
+        {
+            // Skip the initial "{{*"
+            _position += 3;
+            
+            while (_position < _input.Length)
+            {
+                if (TryMatch("*}}"))
+                {
+                    _position += 3; // Skip past "*}}"
+                    return;
+                }
+                _position++;
+            }
+            
+            throw new Exception("Unterminated comment");
         }
 
         private void TokenizeDirective()

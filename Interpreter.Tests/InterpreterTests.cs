@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Dynamic;
+using System.Linq;
 using NUnit.Framework;
 
 namespace TemplateInterpreter.Tests
@@ -9,11 +10,13 @@ namespace TemplateInterpreter.Tests
     public class InterpreterTests
     {
         private Interpreter _interpreter;
+        private Lexer _lexer;
 
         [SetUp]
         public void Setup()
         {
             _interpreter = new Interpreter();
+            _lexer = new Lexer();
         }
 
         [Test]
@@ -844,6 +847,146 @@ namespace TemplateInterpreter.Tests
 
             var result = _interpreter.Interpret(template3, data).Trim();
             Assert.That(result, Is.EqualTo("3468")); // Should output: 3,4,6,8
+        }
+
+        [Test]
+        public void SingleLineComment_ShouldBeIgnored()
+        {
+            // Arrange
+            var template = "Hello {{* This is a comment *}} World";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
+        }
+
+        [Test]
+        public void MultiLineComment_ShouldBeIgnored()
+        {
+            // Arrange
+            var template = @"Hello {{* 
+                This is a
+                multi-line comment
+            *}} World";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
+        }
+
+        [Test]
+        public void CommentBetweenDirectives_ShouldBeIgnored()
+        {
+            // Arrange
+            var template = "{{ value1 }}{{* comment *}}{{ value2 }}";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.Variable,
+                TokenType.DirectiveEnd,
+                TokenType.DirectiveStart,
+                TokenType.Variable,
+                TokenType.DirectiveEnd
+            }));
+        }
+
+        [Test]
+        public void NestedDirectiveLikeSyntaxInComment_ShouldBeIgnored()
+        {
+            // Arrange
+            var template = "{{* This {{ should }} be ignored *}}{{ value }}";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.Variable,
+                TokenType.DirectiveEnd
+            }));
+        }
+
+        [Test]
+        public void UnterminatedComment_ShouldThrowException()
+        {
+            // Arrange
+            var template = "Hello {{* This comment is not terminated";
+
+            // Act & Assert
+            var ex = Assert.Throws<Exception>(() => _lexer.Tokenize(template));
+            Assert.That(ex.Message, Is.EqualTo("Unterminated comment"));
+        }
+
+        [Test]
+        public void MultipleConsecutiveComments_ShouldAllBeIgnored()
+        {
+            // Arrange
+            var template = "{{* Comment 1 *}}{{* Comment 2 *}}{{ value }}";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.Variable,
+                TokenType.DirectiveEnd
+            }));
+        }
+
+        [Test]
+        public void CommentWithAsterisksInContent_ShouldBeParsedCorrectly()
+        {
+            // Arrange
+            var template = "{{* This * has * asterisks * in * it *}}{{ value }}";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.Variable,
+                TokenType.DirectiveEnd
+            }));
+        }
+
+        [Test]
+        public void EmptyComment_ShouldBeIgnored()
+        {
+            // Arrange
+            var template = "Hello {{**}} World";
+
+            // Act
+            var tokens = _lexer.Tokenize(template);
+
+            // Assert
+            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
         }
     }
 }
