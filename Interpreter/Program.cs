@@ -406,7 +406,7 @@ namespace TemplateInterpreter
         {
             // Skip the initial "{{*"
             _position += 3;
-            
+
             while (_position < _input.Length)
             {
                 if (TryMatch("*}}"))
@@ -416,7 +416,7 @@ namespace TemplateInterpreter
                 }
                 _position++;
             }
-            
+
             throw new Exception("Unterminated comment");
         }
 
@@ -683,24 +683,49 @@ namespace TemplateInterpreter
         private void TokenizeString()
         {
             _position++; // Skip opening quote
-            var start = _position;
+            var result = new StringBuilder();
+
             while (_position < _input.Length && _input[_position] != '"')
             {
-                if (_input[_position] == '\\' && PeekNext() == '"')
+                if (_input[_position] == '\\' && _position + 1 < _input.Length)
                 {
-                    _position += 2;
+                    // Handle escape sequences
+                    char nextChar = _input[_position + 1];
+                    switch (nextChar)
+                    {
+                        case '"':
+                            result.Append('"');
+                            break;
+                        case '\\':
+                            result.Append('\\');
+                            break;
+                        case 'n':
+                            result.Append('\n');
+                            break;
+                        case 'r':
+                            result.Append('\r');
+                            break;
+                        case 't':
+                            result.Append('\t');
+                            break;
+                        default:
+                            throw new Exception($"Invalid escape sequence '\\{nextChar}' at position {_position}");
+                    }
+                    _position += 2; // Skip both the backslash and the escaped character
                 }
                 else
                 {
+                    result.Append(_input[_position]);
                     _position++;
                 }
             }
+
             if (_position >= _input.Length)
             {
                 throw new Exception("Unterminated string literal");
             }
-            var value = _input.Substring(start, _position - start);
-            _tokens.Add(new Token(TokenType.String, value, start - 1));
+
+            _tokens.Add(new Token(TokenType.String, result.ToString(), _position - result.Length - 1));
             _position++; // Skip closing quote
         }
 

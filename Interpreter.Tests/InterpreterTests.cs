@@ -988,5 +988,133 @@ namespace TemplateInterpreter.Tests
             Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[1].Value, Is.EqualTo(" World"));
         }
+
+        [Test]
+        public void StringQuotes_CanBeEscaped()
+        {
+            // Arrange
+            var template = "{{#let x = \"\\\"hello world\\\"\"}}{{x}}";
+
+            // Act
+            dynamic data = new ExpandoObject();
+
+            // Assert
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("\"hello world\""));
+        }
+
+        [Test]
+        public void SingleQuote()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello 'World'\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello 'World'"));
+        }
+
+        [Test]
+        public void DoubleQuoteEscape()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello \\\"World\\\"\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello \"World\""));
+        }
+
+        [Test]
+        public void BackslashEscape()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello \\\\World\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello \\World"));
+        }
+
+        [Test]
+        public void NewlineEscape()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello\\nWorld\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello\nWorld"));
+        }
+
+        [Test]
+        public void CarriageReturnEscape()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello\\rWorld\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello\rWorld"));
+        }
+
+        [Test]
+        public void TabEscape()
+        {
+            var tokens = _lexer.Tokenize("{{\"Hello\\tWorld\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("Hello\tWorld"));
+        }
+
+        [Test]
+        public void MultipleEscapeSequences()
+        {
+            var tokens = _lexer.Tokenize("{{\"\\\"Hello\\n\\tWorld\\\"\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("\"Hello\n\tWorld\""));
+        }
+
+        [Test]
+        public void InvalidEscapeSequence()
+        {
+            Assert.Throws<System.Exception>(() => 
+                _lexer.Tokenize("{{\"Hello\\xWorld\"}}")
+            );
+        }
+
+        [Test]
+        public void UnterminatedString()
+        {
+            Assert.Throws<System.Exception>(() => 
+                _lexer.Tokenize("{{\"Hello World")
+            );
+        }
+
+        [Test]
+        public void EscapeAtEndOfString()
+        {
+            Assert.Throws<System.Exception>(() => 
+                _lexer.Tokenize("{{\"Hello World\\")
+            );
+        }
+
+        [Test]
+        public void EmptyString()
+        {
+            var tokens = _lexer.Tokenize("{{\"\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo(""));
+        }
+
+        [Test]
+        public void StringWithOnlyEscapeSequence()
+        {
+            var tokens = _lexer.Tokenize("{{\"\\n\"}}");
+            var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
+            
+            Assert.That(stringToken, Is.Not.Null);
+            Assert.That(stringToken.Value, Is.EqualTo("\n"));
+        }
     }
 }
