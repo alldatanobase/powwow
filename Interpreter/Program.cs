@@ -360,7 +360,9 @@ namespace TemplateInterpreter
         Field,             // object field name
         LeftBracket,       // [
         RightBracket,      // ]
-        Include            // #include
+        Include,           // #include
+        Literal,           // #literal
+        EndLiteral         // /literal
     }
 
     public class Lexer
@@ -422,6 +424,70 @@ namespace TemplateInterpreter
 
         private void TokenizeDirective()
         {
+            if (TryMatch("#literal"))
+            {
+                SkipWhitespace();
+
+                _tokens.Add(new Token(TokenType.Literal, "#literal", _position));
+                _position += 8;
+
+                SkipWhitespace();
+
+                if (!TryMatch("}}"))
+                {
+                    throw new Exception("Unterminated directive");
+                }
+                _position += 2; // Skip }}
+
+                // Capture everything until we find the closing literal directive
+                var contentStart = _position;
+                var literalStackCount = 0;
+                while (_position < _input.Length)
+                {
+                    int originalPosition = _position;
+                    int currentLookahead = _position;
+                    if (TryMatch("{{"))
+                    {
+                        currentLookahead += 2 + WhitespaceCount();
+                        if (TryMatchAt("#literal", currentLookahead))
+                        {
+                            currentLookahead += 8 + WhitespaceCount();
+                            if (TryMatchAt("}}", currentLookahead))
+                            {
+                                currentLookahead += 2;
+                                _position += currentLookahead - originalPosition;
+                                literalStackCount++;
+                                continue;
+                            }
+                        }
+
+                        if (TryMatchAt("/literal", currentLookahead))
+                        {
+                            currentLookahead += 8 + WhitespaceCount();
+                            if (TryMatchAt("}}", currentLookahead))
+                            {
+                                currentLookahead += 2;
+                                if (literalStackCount > 0)
+                                {
+                                    literalStackCount--;
+                                }
+                                else
+                                {
+                                    // We found the end, create a token with the raw content
+                                    var content = _input.Substring(contentStart, _position - contentStart);
+                                    _tokens.Add(new Token(TokenType.Text, content, contentStart));
+                                    _position += currentLookahead - originalPosition; // Skip {{/literal}} plus whitespace
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    _position++;
+                }
+                throw new Exception("Unterminated literal directive");
+            }
+
             while (_position < _input.Length)
             {
                 SkipWhitespace();
@@ -433,7 +499,6 @@ namespace TemplateInterpreter
                     return;
                 }
 
-                // Add check for comma
                 if (TryMatch(","))
                 {
                     _tokens.Add(new Token(TokenType.Comma, ",", _position));
@@ -532,7 +597,7 @@ namespace TemplateInterpreter
                     _position += 4;
                     continue;
                 }
-                if (TryMatch("#for"))
+                else if (TryMatch("#for"))
                 {
                     _tokens.Add(new Token(TokenType.For, "#for", _position));
                     _position += 4;
@@ -790,6 +855,17 @@ namespace TemplateInterpreter
             }
         }
 
+        private int WhitespaceCount()
+        {
+            int originalPosition = _position;
+            int currentPosition = _position;
+            while (currentPosition < _input.Length && char.IsWhiteSpace(_input[currentPosition]))
+            {
+                currentPosition++;
+            }
+            return currentPosition - originalPosition;
+        }
+
         private bool TryMatch(string pattern)
         {
             if (_position + pattern.Length > _input.Length)
@@ -798,6 +874,16 @@ namespace TemplateInterpreter
             }
 
             return _input.Substring(_position, pattern.Length) == pattern;
+        }
+
+        private bool TryMatchAt(string pattern, int position)
+        {
+            if (position + pattern.Length > _input.Length)
+            {
+                return false;
+            }
+
+            return _input.Substring(position, pattern.Length) == pattern;
         }
 
         private char PeekNext()
@@ -809,6 +895,21 @@ namespace TemplateInterpreter
     public abstract class AstNode
     {
         public abstract dynamic Evaluate(ExecutionContext context);
+    }
+
+    public class LiteralNode : AstNode
+    {
+        private readonly string _content;
+
+        public LiteralNode(string content)
+        {
+            _content = content;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            return _content;
+        }
     }
 
     public class IncludeNode : AstNode
@@ -1378,6 +1479,10 @@ namespace TemplateInterpreter
                     {
                         nodes.Add(ParseLetStatement());
                     }
+                    else if (nextToken.Type == TokenType.Literal)
+                    {
+                        nodes.Add(ParseLiteralStatement());
+                    }
                     else if (nextToken.Type == TokenType.Include)
                     {
                         nodes.Add(ParseIncludeStatement());
@@ -1429,6 +1534,19 @@ namespace TemplateInterpreter
             Advance(); // Skip }}
 
             return new LetNode(variableName, expression);
+        }
+
+        private AstNode ParseLiteralStatement()
+        {
+            Advance(); // Skip {{
+            Advance(); // Skip #literal
+
+            // The next token should be the raw content
+            Expect(TokenType.Text);
+            var content = Current().Value;
+            Advance();
+
+            return new LiteralNode(content);
         }
 
         private AstNode ParseIncludeStatement()

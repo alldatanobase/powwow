@@ -1116,5 +1116,144 @@ namespace TemplateInterpreter.Tests
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("\n"));
         }
+
+        [Test]
+        public void Literal_BasicDirective_ShouldReturnExactContent()
+        {
+            var template = "{{#literal}}Hello World{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("Hello World"));
+        }
+
+        [Test]
+        public void Literal_WithTemplateDirectives_ShouldReturnUnprocessedContent()
+        {
+            var template = "{{#literal}}{{#if x}}True{{#else}}False{{/if}}{{/literal}}";
+            dynamic data = new ExpandoObject();
+            data.x = true;
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{{#if x}}True{{#else}}False{{/if}}"));
+        }
+
+        [Test]
+        public void Literal_WithVariables_ShouldReturnUnprocessedVariables()
+        {
+            var template = "{{#literal}}{{name}} is {{age}} years old{{/literal}}";
+            dynamic data = new ExpandoObject();
+            data.name = "John";
+            data.age = 30;
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{{name}} is {{age}} years old"));
+        }
+
+        [Test]
+        public void Literal_WithMixedContent_ShouldProcessOutsideAndPreserveInside()
+        {
+            var template = "Name: {{name}} {{#literal}}Age: {{age}}{{/literal}} Location: {{location}}";
+            dynamic data = new ExpandoObject();
+            data.name = "John";
+            data.age = 30;
+            data.location = "New York";
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("Name: John Age: {{age}} Location: New York"));
+        }
+
+        [Test]
+        public void Literal_WithNestedDirectives_ShouldPreserveAllContent()
+        {
+            var template = "{{#literal}}{{#for item in items}}{{item.name}}{{#if item.active}}Active{{/if}}{{/for}}{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("{{#for item in items}}{{item.name}}{{#if item.active}}Active{{/if}}{{/for}}"));
+        }
+
+        [Test]
+        public void Literal_WithSpecialCharacters_ShouldPreserveFormatting()
+        {
+            var template = "{{#literal}}Line 1\nLine 2\tTabbed{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("Line 1\nLine 2\tTabbed"));
+        }
+
+        [Test]
+        public void Literal_Empty_ShouldReturnEmptyString()
+        {
+            var template = "{{#literal}}{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Literal_WithExpressions_ShouldPreserveExpressions()
+        {
+            var template = "{{#literal}}{{x + y * z}}{{/literal}}";
+            dynamic data = new ExpandoObject();
+            data.x = 1;
+            data.y = 2;
+            data.z = 3;
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{{x + y * z}}"));
+        }
+
+        [Test]
+        public void Literal_WithMultipleDirectives_ShouldProcessCorrectly()
+        {
+            var template = "{{#literal}}First{{/literal}} Middle {{#literal}}Last{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("First Middle Last"));
+        }
+
+        [Test]
+        public void Literal_WithNestedLiterals_ShouldHandleNestingCorrectly()
+        {
+            var template = "{{#literal}}Outer {{#literal}}Inner{{/literal}} Content{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("Outer {{#literal}}Inner{{/literal}} Content"));
+        }
+
+        [Test]
+        public void Literal_UnterminatedDirective_ShouldThrowException()
+        {
+            var template = "{{#literal}}Unterminated content";
+            Assert.Throws<System.Exception>(() => 
+                _interpreter.Interpret(template, new ExpandoObject())
+            );
+        }
+
+        [Test]
+        public void Literal_MismatchedDirectives_ShouldThrowException()
+        {
+            var template = "{{#literal}}{{/if}}";
+            Assert.Throws<System.Exception>(() => 
+                _interpreter.Interpret(template, new ExpandoObject())
+            );
+        }
+
+        [Test]
+        public void Literal_WithFunctionCalls_ShouldPreserveFunctionCalls()
+        {
+            var template = "{{#literal}}{{length(items)}} {{uppercase(name)}}{{/literal}}";
+            dynamic data = new ExpandoObject();
+            data.items = new[] { 1, 2, 3 };
+            data.name = "john";
+
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{{length(items)}} {{uppercase(name)}}"));
+        }
+
+        [Test]
+        public void Literal_WithMultipleLines_ShouldPreserveLineBreaks()
+        {
+            var template = @"{{#literal}}
+Line 1
+Line 2
+Line 3
+{{/literal}}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("\r\nLine 1\r\nLine 2\r\nLine 3\r\n"));
+        }
     }
 }
