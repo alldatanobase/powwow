@@ -372,6 +372,22 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
+        public void UrlEncodeAndDecode()
+        {
+            // Arrange
+            var template1 = @"{{ urlEncode(""https://www.example.com/search?query=C# programming&sort=recent"") }}";
+            var template2 = @"{{ urlDecode(""https%3A%2F%2Fwww.example.com%2Fsearch%3Fquery%3DC%23+programming%26sort%3Drecent"") }}";
+
+            // Act
+            var result1 = _interpreter.Interpret(template1, new ExpandoObject());
+            var result2 = _interpreter.Interpret(template2, new ExpandoObject());
+
+            // Assert
+            Assert.That(result1, Is.EqualTo("https%3A%2F%2Fwww.example.com%2Fsearch%3Fquery%3DC%23+programming%26sort%3Drecent"));
+            Assert.That(result2, Is.EqualTo("https://www.example.com/search?query=C# programming&sort=recent"));
+        }
+
+        [Test]
         public void UriFunctions()
         {
             // Arrange

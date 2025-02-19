@@ -3124,6 +3124,42 @@ namespace TemplateInterpreter
                         throw new Exception($"Failed to decode html: {ex.Message}");
                     }
                 });
+
+            Register("urlEncode",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var url = args[0] as string;
+
+                    try
+                    {
+                        return WebUtility.UrlEncode(url);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to encode url: {ex.Message}");
+                    }
+                });
+
+            Register("urlDecode",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var url = args[0] as string;
+
+                    try
+                    {
+                        return WebUtility.UrlDecode(url);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to decode url: {ex.Message}");
+                    }
+                });
         }
 
         public void Register(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)
