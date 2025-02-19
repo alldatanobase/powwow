@@ -4,19 +4,26 @@ using System.Dynamic;
 using System.Linq;
 using NUnit.Framework;
 using System.Web.Script.Serialization;
+using Moq;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 
 namespace TemplateInterpreter.Tests
 {
     [TestFixture]
     public class InterpreterTests
     {
+        private Mock<IOrganizationService> _mockOrgService;
+        private DataverseService _dataverseService;
         private Interpreter _interpreter;
         private Lexer _lexer;
 
         [SetUp]
         public void Setup()
         {
-            _interpreter = new Interpreter();
+            _mockOrgService = new Mock<IOrganizationService>();
+            _dataverseService = new DataverseService(_mockOrgService.Object);
+            _interpreter = new Interpreter(dataverseService: _dataverseService);
             _lexer = new Lexer();
         }
 
@@ -1968,6 +1975,177 @@ Line 3
             Assert.That(result.Contains("Pößen"), Is.True);
             Assert.That(result.Contains("ñ"), Is.True);
             Assert.That(result.Contains("🌟"), Is.True);
+        }
+
+        [Test]
+        public void Fetch_SimpleQuery_ReturnsCorrectExpandoObjects()
+        {
+            // Arrange
+            var fetchXml = @"<fetch top='2'>
+                <entity name='account'>
+                    <attribute name='name' />
+                    <attribute name='accountid' />
+                </entity>
+            </fetch>";
+
+            var entityCollection = new EntityCollection(new List<Entity>
+            {
+                new Entity("account")
+                {
+                    ["name"] = "Test Account 1",
+                    ["accountid"] = Guid.NewGuid()
+                },
+                new Entity("account")
+                {
+                    ["name"] = "Test Account 2",
+                    ["accountid"] = Guid.NewGuid()
+                }
+            });
+
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.Is<FetchExpression>(f => f.Query == fetchXml)))
+                .Returns(entityCollection);
+
+            // Act
+            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ #for account in accounts }}{{ account.name }}|{{ /for }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            Assert.That(result, Is.EqualTo("Test Account 1|Test Account 2|"));
+        }
+
+        [Test]
+        public void Fetch_WithNullValues_SkipsNullAttributes()
+        {
+            // Arrange
+            var fetchXml = "<fetch><entity name='contact'><attribute name='firstname' /><attribute name='lastname' /></entity></fetch>";
+            var accountId = Guid.NewGuid();
+
+            var entityCollection = new EntityCollection(new List<Entity>
+            {
+                new Entity("contact")
+                {
+                    ["firstname"] = "John",
+                    ["lastname"] = null // This should be skipped
+                }
+            });
+
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
+                .Returns(entityCollection);
+
+            // Act
+            var template = "{{ #let contact = first(fetch(\"" + fetchXml + "\")) }}{{ #if contains(contact, \"firstname\") }}{{ contact.firstname }}{{ /if }}{{ #if contains(contact, \"lastname\") }}{{ contact.lastname }}{{ /if }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            Assert.That(result, Is.EqualTo("John")); // Only firstname should be present
+        }
+
+        [Test]
+        public void Fetch_WithSpecialDataTypes_ConvertsCorrectly()
+        {
+            // Arrange
+            var fetchXml = "<fetch><entity name='account'><attribute name='primarycontactid' /><attribute name='accountcategorycode' /><attribute name='revenue' /></entity></fetch>";
+            var contactId = Guid.NewGuid();
+
+            var entityCollection = new EntityCollection(new List<Entity>
+            {
+                new Entity("account")
+                {
+                    ["primarycontactid"] = new EntityReference("contact", contactId),
+                    ["accountcategorycode"] = new OptionSetValue(1),
+                    ["revenue"] = new Money(1000.50m)
+                }
+            });
+
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
+                .Returns(entityCollection);
+
+            // Act
+            var template = @"{{ #let accounts = fetch(""" + fetchXml + @""") }}
+                           Contact: {{ first(accounts).primarycontactid }}
+                           Category: {{ first(accounts).accountcategorycode }}
+                           Revenue: {{ first(accounts).revenue }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            StringAssert.Contains(contactId.ToString(), result);
+            StringAssert.Contains("1", result); // OptionSetValue
+            StringAssert.Contains("1000.50", result); // Money value
+        }
+
+        [Test]
+        public void Fetch_WithAliasedValues_ConvertsCorrectly()
+        {
+            // Arrange
+            var fetchXml = "<fetch><entity name='account'><attribute name='contact_name' /></entity></fetch>";
+
+            var entityCollection = new EntityCollection(new List<Entity>
+            {
+                new Entity("account")
+                {
+                    ["contact_name"] = new AliasedValue("contact", "fullname", "John Doe")
+                }
+            });
+
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
+                .Returns(entityCollection);
+
+            // Act
+            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ first(accounts).contact_name }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            Assert.That(result, Is.EqualTo("John Doe"));
+        }
+
+        [Test]
+        public void Fetch_WithNoDataverseService_ThrowsException()
+        {
+            // Arrange
+            var interpreter = new Interpreter(); // No DataverseService provided
+            var fetchXml = "<fetch><entity name='account'><attribute name='name' /></entity></fetch>";
+            var template = "{{ fetch(\"" + fetchXml + "\") }}";
+
+            // Act & Assert
+            var ex = Assert.Throws<Exception>(() => interpreter.Interpret(template, new ExpandoObject()));
+            Assert.That(ex.Message, Does.Contain("Dataverse service not configured"));
+        }
+
+        [Test]
+        public void Fetch_WithEmptyFetchXml_ThrowsException()
+        {
+            // Arrange
+            var template = "{{ fetch(\"\") }}";
+
+            // Act & Assert
+            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()));
+            Assert.That(ex.Message, Does.Contain("requires a non-empty FetchXML string"));
+        }
+
+        [Test]
+        public void DataverseService_WithNullOrganizationService_ThrowsException()
+        {
+            // Act & Assert
+            Assert.Throws<ArgumentNullException>(() => new DataverseService(null));
+        }
+
+        [Test]
+        public void Fetch_WithInvalidFetchXml_PropagatesException()
+        {
+            // Arrange
+            var invalidFetchXml = "not valid fetch xml";
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
+                .Throws(new Exception("Invalid FetchXML"));
+
+            var template = "{{ fetch(\"" + invalidFetchXml + "\") }}";
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()));
         }
     }
 }

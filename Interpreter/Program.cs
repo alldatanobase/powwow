@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using System;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
@@ -23,18 +25,46 @@ namespace TemplateInterpreter
         private readonly Parser _parser;
         private readonly FunctionRegistry _functionRegistry;
         private readonly ITemplateResolver _templateResolver;
+        private readonly IDataverseService _dataverseService;
 
-        public Interpreter(ITemplateResolver templateResolver = null)
+        public Interpreter(ITemplateResolver templateResolver = null, IDataverseService dataverseService = null)
         {
             _functionRegistry = new FunctionRegistry();
             _lexer = new Lexer();
             _parser = new Parser(_functionRegistry);
             _templateResolver = templateResolver;
+            _dataverseService = dataverseService;
+
+            RegisterDataverseFunctions();
         }
 
         public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<List<dynamic>, dynamic> implementation)
         {
             _functionRegistry.Register(name, parameterTypes, implementation);
+        }
+
+        private void RegisterDataverseFunctions()
+        {
+            _functionRegistry.Register("fetch",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    if (_dataverseService == null)
+                    {
+                        throw new Exception("Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.");
+                    }
+
+                    var fetchXml = args[0] as string;
+
+                    if (string.IsNullOrEmpty(fetchXml))
+                    {
+                        throw new Exception("fetch function requires a non-empty FetchXML string");
+                    }
+
+                    return _dataverseService.RetrieveMultiple(fetchXml);
+                });
         }
 
         public string Interpret(string template, dynamic data)
@@ -3644,6 +3674,79 @@ namespace TemplateInterpreter
                 throw new Exception($"Template '{templateName}' not found");
             }
             return template;
+        }
+    }
+
+    public interface IDataverseService
+    {
+        List<ExpandoObject> RetrieveMultiple(string fetchXml);
+    }
+
+    public class DataverseService : IDataverseService
+    {
+        private readonly IOrganizationService _organizationService;
+
+        public DataverseService(IOrganizationService organizationService)
+        {
+            _organizationService = organizationService ?? throw new ArgumentNullException(nameof(organizationService));
+        }
+
+        public List<ExpandoObject> RetrieveMultiple(string fetchXml)
+        {
+            var fetch = new FetchExpression(fetchXml);
+            var results = _organizationService.RetrieveMultiple(fetch);
+            return ConvertToExpandoObjects(results);
+        }
+
+        private List<ExpandoObject> ConvertToExpandoObjects(EntityCollection entityCollection)
+        {
+            var expandoObjects = new List<ExpandoObject>();
+
+            foreach (var entity in entityCollection.Entities)
+            {
+                var expando = new ExpandoObject() as IDictionary<string, object>;
+
+                foreach (var attribute in entity.Attributes)
+                {
+                    // Skip null values
+                    if (attribute.Value != null)
+                    {
+                        // Handle special types like EntityReference, OptionSetValue, etc.
+                        var value = ConvertAttributeValue(attribute.Value);
+                        if (value != null)
+                        {
+                            expando[attribute.Key] = value;
+                        }
+                    }
+                }
+
+                expandoObjects.Add(expando as ExpandoObject);
+            }
+
+            return expandoObjects;
+        }
+
+        private object ConvertAttributeValue(object attributeValue)
+        {
+            if (attributeValue == null) return null;
+
+            switch (attributeValue)
+            {
+                case EntityReference entityRef:
+                    return entityRef.Id.ToString();
+
+                case OptionSetValue optionSet:
+                    return optionSet.Value;
+
+                case Money money:
+                    return money.Value;
+
+                case AliasedValue aliased:
+                    return ConvertAttributeValue(aliased.Value);
+
+                default:
+                    return attributeValue;
+            }
         }
     }
 }
