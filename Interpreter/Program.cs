@@ -4,6 +4,7 @@ using System.Dynamic;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Web.Script.Serialization;
 
 namespace TemplateInterpreter
 {
@@ -3160,6 +3161,219 @@ namespace TemplateInterpreter
                         throw new Exception($"Failed to decode url: {ex.Message}");
                     }
                 });
+
+            Register("fromJson",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var jsonString = args[0] as string;
+                    if (string.IsNullOrEmpty(jsonString))
+                        throw new Exception("fromJson function requires a non-empty string argument");
+
+                    try
+                    {
+                        return ParseJsonToExpando(jsonString);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to parse JSON string: {ex.Message}");
+                    }
+                });
+
+            Register("toJson",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(object)),
+                    new ParameterDefinition(typeof(bool), true, false)
+                },
+                args =>
+                {
+                    var obj = args[0];
+                    var formatted = Convert.ToBoolean(args[1]);
+
+                    if (obj == null)
+                        return "null";
+
+                    try
+                    {
+                        // Convert the object to a format suitable for serialization
+                        var serializable = ConvertToSerializable(obj);
+                        var serializer = new JavaScriptSerializer();
+                        var json = serializer.Serialize(serializable);
+
+                        if (formatted)
+                        {
+                            return FormatJson(json);
+                        }
+
+                        return json;
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to serialize object to JSON: {ex.Message}");
+                    }
+                });
+        }
+
+        private dynamic ParseJsonToExpando(string jsonString)
+        {
+            var serializer = new JavaScriptSerializer();
+            var deserializedObject = serializer.Deserialize<object>(jsonString);
+            return ConvertToExpando(deserializedObject);
+        }
+
+        private dynamic ConvertToExpando(object obj)
+        {
+            if (obj == null) return null;
+
+            // Handle dictionary (objects in JSON)
+            if (obj is Dictionary<string, object> dict)
+            {
+                var expando = new ExpandoObject() as IDictionary<string, object>;
+                foreach (var kvp in dict)
+                {
+                    var convertedValue = ConvertToExpando(kvp.Value);
+                    if (convertedValue != null)  // Skip null values
+                    {
+                        expando[kvp.Key] = convertedValue;
+                    }
+                }
+                return expando;
+            }
+
+            // Handle array
+            if (obj is System.Collections.ArrayList arrayList)
+            {
+                return arrayList.Cast<object>()
+                               .Select(item => ConvertToExpando(item))
+                               .Where(item => item != null)  // Filter out null values
+                               .ToList();
+            }
+
+            if (obj is Object[] array)
+            {
+                return array.Cast<object>()
+                               .Select(item => ConvertToExpando(item))
+                               .Where(item => item != null)  // Filter out null values
+                               .ToList();
+            }
+
+            // Handle numbers - convert to decimal where possible
+            if (TypeHelper.IsConvertibleToDecimal(obj))
+            {
+                return Convert.ToDecimal(obj);
+            }
+
+            // Return other primitives as-is (string, bool)
+            return obj;
+        }
+
+        private object ConvertToSerializable(object obj)
+        {
+            if (obj == null) return null;
+
+            // Handle ExpandoObject (dynamic objects)
+            if (obj is ExpandoObject expando)
+            {
+                var dict = new Dictionary<string, object>();
+                foreach (var kvp in (IDictionary<string, object>)expando)
+                {
+                    dict[kvp.Key] = ConvertToSerializable(kvp.Value);
+                }
+                return dict;
+            }
+
+            // Handle arrays and collections
+            if (obj is System.Collections.IEnumerable enumerable && !(obj is string))
+            {
+                return enumerable.Cast<object>()
+                                .Select(item => ConvertToSerializable(item))
+                                .ToList();
+            }
+
+            // Handle DateTime
+            if (obj is DateTime dateTime)
+            {
+                return dateTime.ToString("o"); // ISO 8601 format
+            }
+
+            // Handle Uri
+            if (obj is Uri uri)
+            {
+                return uri.ToString();
+            }
+
+            // Handle numeric types - ensure proper decimal serialization
+            if (TypeHelper.IsConvertibleToDecimal(obj))
+            {
+                return Convert.ToDecimal(obj);
+            }
+
+            // Return primitives and other basic types as-is
+            return obj;
+        }
+
+        private string FormatJson(string json)
+        {
+            var indent = 0;
+            var quoted = false;
+            var sb = new StringBuilder();
+
+            for (var i = 0; i < json.Length; i++)
+            {
+                var ch = json[i];
+                switch (ch)
+                {
+                    case '{':
+                    case '[':
+                        sb.Append(ch);
+                        if (!quoted)
+                        {
+                            sb.AppendLine();
+                            indent++;
+                            sb.Append(new string(' ', indent * 4));
+                        }
+                        break;
+                    case '}':
+                    case ']':
+                        if (!quoted)
+                        {
+                            sb.AppendLine();
+                            indent--;
+                            sb.Append(new string(' ', indent * 4));
+                        }
+                        sb.Append(ch);
+                        break;
+                    case '"':
+                        sb.Append(ch);
+                        bool escaped = false;
+                        var index = i;
+                        while (index > 0 && json[--index] == '\\')
+                            escaped = !escaped;
+                        if (!escaped)
+                            quoted = !quoted;
+                        break;
+                    case ',':
+                        sb.Append(ch);
+                        if (!quoted)
+                        {
+                            sb.AppendLine();
+                            sb.Append(new string(' ', indent * 4));
+                        }
+                        break;
+                    case ':':
+                        sb.Append(ch);
+                        if (!quoted)
+                            sb.Append(" ");
+                        break;
+                    default:
+                        sb.Append(ch);
+                        break;
+                }
+            }
+
+            return sb.ToString();
         }
 
         public void Register(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)

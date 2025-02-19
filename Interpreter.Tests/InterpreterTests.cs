@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using NUnit.Framework;
+using System.Web.Script.Serialization;
 
 namespace TemplateInterpreter.Tests
 {
@@ -1532,6 +1533,441 @@ Line 3
 
             // Assert
             Assert.That(result, Is.EqualTo("Message: Hello, World!"));
+        }
+
+        [Test]
+        public void FromJson_SimpleObject_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let person = fromJson(""{\""name\"":\""John\"",\""age\"":30}"") }}
+                {{ person.name }},{{ person.age }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("John,30"));
+        }
+
+        [Test]
+        public void FromJson_NestedObject_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let data = fromJson(""{
+                    \""person\"": {
+                        \""name\"": \""John\"",
+                        \""address\"": {
+                            \""street\"": \""123 Main St\"",
+                            \""city\"": \""Boston\""
+                        }
+                    }
+                }"") }}
+                {{ data.person.name }},{{ data.person.address.street }},{{ data.person.address.city }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("John,123 Main St,Boston"));
+        }
+
+        [Test]
+        public void FromJson_Array_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let numbers = fromJson(""[1, 2, 3, 4, 5]"") }}
+                {{ #for num in numbers }}{{ num }}{{ #if num != 5 }},{{ /if }}{{ /for }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("1,2,3,4,5"));
+        }
+
+        [Test]
+        public void FromJson_ObjectWithNullValues_SkipsNullProperties()
+        {
+            // Arrange
+            var template = @"
+                {{ #let person = fromJson(""{
+                    \""name\"": \""John\"",
+                    \""email\"": null,
+                    \""age\"": 30,
+                    \""address\"": null
+                }"") }}
+{{ #if contains(person, ""name"") }}has_name{{ /if }}
+{{ #if contains(person, ""age"") }}has_age{{ /if }}
+{{ #if contains(person, ""email"") }}has_email{{ /if }}
+{{ #if contains(person, ""address"") }}has_address{{ /if }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("has_name\r\nhas_age"));
+        }
+
+        [Test]
+        public void FromJson_ArrayWithNullValues_FiltersOutNulls()
+        {
+            // Arrange
+            var template = @"
+                {{ #let numbers = fromJson(""[1, null, 2, null, 3]"") }}
+                {{ length(numbers) }},{{ #for num in numbers }}{{ num }}{{ #if num != 3 }},{{ /if }}{{ /for }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("3,1,2,3"));
+        }
+
+        [Test]
+        public void FromJson_ArrayOfObjects_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let people = fromJson(""[
+                    {\""name\"": \""John\"", \""age\"": 30},
+                    {\""name\"": \""Jane\"", \""age\"": 25}
+                ]"") }}
+                {{ #for person in people }}{{ person.name }}:{{ person.age }}{{ #if person != last(people) }},{{ /if }}{{ /for }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("John:30,Jane:25"));
+        }
+
+        [Test]
+        public void FromJson_BooleanValues_ParseCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let flags = fromJson(""{
+                    \""isActive\"": true,
+                    \""isDeleted\"": false
+                }"") }}
+                {{ #if flags.isActive }}active{{ /if }}
+                {{ #if flags.isDeleted }}deleted{{ /if }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("active"));
+        }
+
+        [Test]
+        public void FromJson_NumericOperations_WorkWithParsedNumbers()
+        {
+            // Arrange
+            var template = @"
+                {{ #let data = fromJson(""{
+                    \""price\"": 10.5,
+                    \""quantity\"": 3,
+                    \""discount\"": 2.5
+                }"") }}
+                {{ floor(data.price * data.quantity - data.discount) }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("29"));
+        }
+
+        [Test]
+        public void FromJson_EmptyObject_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let obj = fromJson(""{}"") }}
+                {{ length(keys(obj)) }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("0"));
+        }
+
+        [Test]
+        public void FromJson_EmptyArray_ParsesCorrectly()
+        {
+            // Arrange
+            var template = @"
+                {{ #let arr = fromJson(""[]"") }}
+                {{ length(arr) }}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new { });
+
+            // Assert
+            Assert.That(result.Trim(), Is.EqualTo("0"));
+        }
+
+        [Test]
+        public void FromJson_InvalidJson_ThrowsException()
+        {
+            // Arrange
+            var template = @"{{ fromJson(""{invalid json}"") }}";
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new { }));
+        }
+
+        [Test]
+        public void FromJson_NullInput_ThrowsException()
+        {
+            // Arrange
+            var template = "{{ fromJson(null) }}";
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new { }));
+        }
+
+        [Test]
+        public void ToJson_SimpleObject_ReturnsCorrectJson()
+        {
+            dynamic person = new ExpandoObject();
+            person.name = "John";
+            person.age = 30;
+
+            dynamic data = new ExpandoObject();
+            data.person = person;
+
+            var template = "{{ toJson(person) }}";
+            var result = _interpreter.Interpret(template, data);
+
+            Assert.That(result, Is.EqualTo("{\"name\":\"John\",\"age\":30}"));
+        }
+
+        [Test]
+        public void ToJson_Array_ReturnsCorrectJson()
+        {
+            var template = "{{ toJson([1, 2, 3]) }}";
+            var result = _interpreter.Interpret(template, null);
+            Assert.That(result, Is.EqualTo("[1,2,3]"));
+        }
+
+        [Test]
+        public void ToJson_NestedObject_ReturnsCorrectJson()
+        {
+            dynamic address = new ExpandoObject();
+            address.city = "New York";
+            address.zip = "10001";
+
+            dynamic person = new ExpandoObject();
+            person.name = "John";
+            person.address = address;
+
+            dynamic data = new ExpandoObject();
+            data.person = person;
+
+            var template = "{{ toJson(person) }}";
+            var result = _interpreter.Interpret(template, data);
+
+            Assert.That(result, Is.EqualTo("{\"name\":\"John\",\"address\":{\"city\":\"New York\",\"zip\":\"10001\"}}"));
+        }
+
+        [Test]
+        public void ToJson_ArrayOfObjects_ReturnsCorrectJson()
+        {
+            dynamic person1 = new ExpandoObject();
+            person1.name = "John";
+            
+            dynamic person2 = new ExpandoObject();
+            person2.name = "Jane";
+
+            var people = new[] { person1, person2 };
+
+            dynamic data = new ExpandoObject();
+            data.people = people;
+            
+            var template = "{{ toJson(people) }}";
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("[{\"name\":\"John\"},{\"name\":\"Jane\"}]"));
+        }
+
+        [Test]
+        public void ToJson_DateTimeValue_ReturnsIsoFormattedString()
+        {
+            var date = new DateTime(2023, 12, 25, 12, 0, 0, DateTimeKind.Utc);
+            var template = "{{ toJson(date) }}";
+            dynamic data = new ExpandoObject();
+            data.date = date;
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("\"2023-12-25T12:00:00.0000000Z\""));
+        }
+
+        [Test]
+        public void ToJson_UriValue_ReturnsCorrectJson()
+        {
+            var uri = new Uri("https://example.com");
+            var template = "{{ toJson(uri) }}";
+            dynamic data = new ExpandoObject();
+            data.uri = uri;
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("\"https://example.com/\""));
+        }
+
+        [Test]
+        public void ToJson_DecimalValue_ReturnsCorrectJson()
+        {
+            decimal value = 123.45m;
+            var template = "{{ toJson(value) }}";
+            dynamic data = new ExpandoObject();
+            data.value = value;
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("123.45"));
+        }
+
+        [Test]
+        public void ToJson_BooleanValue_ReturnsCorrectJson()
+        {
+            var template = "{{ toJson(true) }}";
+            var result = _interpreter.Interpret(template, null);
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void ToJson_EmptyArray_ReturnsCorrectJson()
+        {
+            var template = "{{ toJson([]) }}";
+            var result = _interpreter.Interpret(template, null);
+            Assert.That(result, Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void ToJson_EmptyObject_ReturnsCorrectJson()
+        {
+            dynamic empty = new ExpandoObject();
+            var template = "{{ toJson(empty) }}";
+            dynamic data = new ExpandoObject();
+            data.empty = empty;
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{}"));
+        }
+
+        [Test]
+        public void ToJson_WithFormatting_ReturnsFormattedJson()
+        {
+            dynamic address = new ExpandoObject();
+            address.city = "New York";
+            address.zip = "10001";
+
+            dynamic person = new ExpandoObject();
+            person.name = "John";
+            person.address = address;
+
+            dynamic data = new ExpandoObject();
+            data.person = person;
+
+            var template = "{{ toJson(person, true) }}";
+            var result = _interpreter.Interpret(template, data);
+            
+            var expected = @"{
+    ""name"": ""John"",
+    ""address"": {
+        ""city"": ""New York"",
+        ""zip"": ""10001""
+    }
+}";
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ToJson_WithStringEscaping_ReturnsCorrectJson()
+        {
+            dynamic obj = new ExpandoObject();
+            obj.text = "Hello \"World\"\nNew Line";
+            var template = "{{ toJson(obj) }}";
+            dynamic data = new ExpandoObject();
+            data.obj = obj;
+            var result = _interpreter.Interpret(template, data);
+            Assert.That(result, Is.EqualTo("{\"text\":\"Hello \\\"World\\\"\\nNew Line\"}"));
+        }
+
+        [Test]
+        public void ToJson_ComplexNestedStructure_ReturnsCorrectJson()
+        {
+            dynamic address1 = new ExpandoObject();
+            address1.street = "123 Main St";
+            address1.city = "New York";
+
+            dynamic address2 = new ExpandoObject();
+            address2.street = "456 Oak Ave";
+            address2.city = "Boston";
+
+            dynamic person1 = new ExpandoObject();
+            person1.name = "John";
+            person1.age = 30;
+            person1.address = address1;
+            person1.hobbies = new[] { "reading", "gaming" };
+
+            dynamic person2 = new ExpandoObject();
+            person2.name = "Jane";
+            person2.age = 28;
+            person2.address = address2;
+            person2.hobbies = new[] { "painting", "music" };
+
+            dynamic org = new ExpandoObject();
+            org.people = new[] { person1, person2 };
+            org.company = "Acme Corp";
+            org.active = true;
+
+            dynamic data = new ExpandoObject();
+            data.org = org;
+
+            var template = "{{ toJson(org, true) }}";
+            var result = _interpreter.Interpret(template, data);
+
+            // Verify structure using deserialization
+            var serializer = new JavaScriptSerializer();
+            var deserialized = serializer.Deserialize<Dictionary<string, object>>(result);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deserialized["company"], Is.EqualTo("Acme Corp"));
+                Assert.That(deserialized["active"], Is.EqualTo(true));
+                
+                var people = (System.Collections.ArrayList)deserialized["people"];
+                Assert.That(people.Count, Is.EqualTo(2));
+                
+                var firstPerson = (Dictionary<string, object>)people[0];
+                Assert.That(firstPerson["name"], Is.EqualTo("John"));
+                Assert.That(firstPerson["age"], Is.EqualTo(30));
+                
+                var firstAddress = (Dictionary<string, object>)firstPerson["address"];
+                Assert.That(firstAddress["city"], Is.EqualTo("New York"));
+                
+                var firstHobbies = (System.Collections.ArrayList)firstPerson["hobbies"];
+                Assert.That(firstHobbies[0], Is.EqualTo("reading"));
+            });
+        }
+        
+        [Test]
+        public void ToJson_WithSpecialCharacters_ReturnsCorrectJson()
+        {
+            dynamic specialChars = new ExpandoObject();
+            specialChars.text = "Special chars: 你好, Pößen, ñ, 🌟";
+            var template = "{{ toJson(specialChars) }}";
+            dynamic data = new ExpandoObject();
+            data.specialChars = specialChars;
+            var result = _interpreter.Interpret(template, data);
+            
+            // Verify the result contains the special characters correctly
+            Assert.That(result.Contains("你好"), Is.True);
+            Assert.That(result.Contains("Pößen"), Is.True);
+            Assert.That(result.Contains("ñ"), Is.True);
+            Assert.That(result.Contains("🌟"), Is.True);
         }
     }
 }
