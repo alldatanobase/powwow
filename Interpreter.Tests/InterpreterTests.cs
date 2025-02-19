@@ -356,6 +356,59 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
+        public void UriFunctions()
+        {
+            // Arrange
+            var template = @"{{ #let uri = uri(""https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName"") }}{{uri.AbsolutePath}}
+{{uri.AbsoluteUri}}
+{{uri.DnsSafeHost}}
+{{uri.Fragment}}
+{{uri.Host}}
+{{uri.HostNameType}}
+{{uri.IdnHost}}
+{{uri.IsAbsoluteUri}}
+{{uri.IsDefaultPort}}
+{{uri.IsFile}}
+{{uri.IsLoopback}}
+{{uri.IsUnc}}
+{{uri.LocalPath}}
+{{uri.OriginalString}}
+{{uri.PathAndQuery}}
+{{uri.Port}}
+{{uri.Query}}
+{{uri.Scheme}}
+{{join(uri.Segments, "", "")}}
+{{uri.UserEscaped}}
+{{uri.UserInfo}}";
+
+            // Act
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            Assert.AreEqual(@"/Home/Index.htm
+https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName
+www.site.com
+#FragmentName
+www.site.com
+Dns
+www.site.com
+True
+False
+False
+False
+False
+/Home/Index.htm
+https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName
+/Home/Index.htm?q1=v1&q2=v2
+80
+?q1=v1&q2=v2
+https
+/, Home/, Index.htm
+False
+user:password", result);
+        }
+
+        [Test]
         public void ArrayOperations()
         {
             // Arrange

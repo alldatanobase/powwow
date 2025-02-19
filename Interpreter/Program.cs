@@ -3067,6 +3067,26 @@ namespace TemplateInterpreter
                 {
                     return DateTime.UtcNow;
                 });
+
+            Register("uri",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var uriString = args[0] as string;
+                    if (string.IsNullOrEmpty(uriString))
+                        throw new Exception("uri function requires a non-empty string argument");
+
+                    try
+                    {
+                        return new Uri(uriString);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to parse uri string '{uriString}': {ex.Message}");
+                    }
+                });
         }
 
         public void Register(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)
