@@ -356,6 +356,22 @@ namespace TemplateInterpreter.Tests
         }
 
         [Test]
+        public void HtmlEncodeAndDecode()
+        {
+            // Arrange
+            var template1 = @"{{ htmlEncode(""<script>alert('XSS');</script>"") }}";
+            var template2 = @"{{ htmlDecode(""&lt;script&gt;alert(&#39;XSS&#39;);&lt;/script&gt;"") }}";
+
+            // Act
+            var result1 = _interpreter.Interpret(template1, new ExpandoObject());
+            var result2 = _interpreter.Interpret(template2, new ExpandoObject());
+
+            // Assert
+            Assert.That(result1, Is.EqualTo("&lt;script&gt;alert(&#39;XSS&#39;);&lt;/script&gt;"));
+            Assert.That(result2, Is.EqualTo("<script>alert('XSS');</script>"));
+        }
+
+        [Test]
         public void UriFunctions()
         {
             // Arrange

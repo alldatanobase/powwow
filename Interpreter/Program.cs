@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace TemplateInterpreter
@@ -3085,6 +3086,42 @@ namespace TemplateInterpreter
                     catch (Exception ex)
                     {
                         throw new Exception($"Failed to parse uri string '{uriString}': {ex.Message}");
+                    }
+                });
+
+            Register("htmlEncode",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var html = args[0] as string;
+
+                    try
+                    {
+                        return WebUtility.HtmlEncode(html);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to encode html: {ex.Message}");
+                    }
+                });
+
+            Register("htmlDecode",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var html = args[0] as string;
+
+                    try
+                    {
+                        return WebUtility.HtmlDecode(html);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed to decode html: {ex.Message}");
                     }
                 });
         }
