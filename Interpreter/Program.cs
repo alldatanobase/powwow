@@ -350,8 +350,8 @@ namespace TemplateInterpreter
     public enum TokenType
     {
         Text,
-        Whitespace,      
-        Newline,         
+        Whitespace,
+        Newline,
         DirectiveStart,    // {{ or {{-
         DirectiveEnd,      // }} or -}}
         Variable,          // alphanumeric+dots
@@ -434,6 +434,14 @@ namespace TemplateInterpreter
                         _position += 2;
                     }
                     TokenizeDirective();
+                }
+                else if (IsNewline(_position))
+                {
+                    TokenizeNewline();
+                }
+                else if (IsWhitespace(_position))
+                {
+                    TokenizeWhitespace();
                 }
                 else
                 {
@@ -854,15 +862,76 @@ namespace TemplateInterpreter
         {
             var start = _position;
 
-            while (_position < _input.Length && !TryMatch("{{"))
+            while (_position < _input.Length &&
+                   !TryMatch("{{") &&
+                   !IsNewline(_position) &&
+                   !IsWhitespace(_position))
             {
                 _position++;
             }
 
             if (_position > start)
             {
-                _tokens.Add(new Token(TokenType.Text, _input.Substring(start, _position - start), start));
+                _tokens.Add(new Token(TokenType.Text,
+                    _input.Substring(start, _position - start),
+                    start));
             }
+        }
+
+        private void TokenizeWhitespace()
+        {
+            var start = _position;
+
+            while (_position < _input.Length &&
+                   IsWhitespace(_position))
+            {
+                _position++;
+            }
+
+            if (_position > start)
+            {
+                _tokens.Add(new Token(TokenType.Whitespace,
+                    _input.Substring(start, _position - start),
+                    start));
+            }
+        }
+
+        private void TokenizeNewline()
+        {
+            var start = _position;
+            string newlineValue;
+
+            if (_input[_position] == '\r' &&
+                _position + 1 < _input.Length &&
+                _input[_position + 1] == '\n')
+            {
+                newlineValue = "\r\n";
+                _position += 2;
+            }
+            else
+            {
+                newlineValue = _input[_position] == '\r' ? "\r" : "\n";
+                _position++;
+            }
+
+            _tokens.Add(new Token(TokenType.Newline, newlineValue, start));
+        }
+
+        private bool IsNewline(int pos)
+        {
+            if (pos >= _input.Length)
+                return false;
+
+            return _input[pos] == '\r' || _input[pos] == '\n';
+        }
+
+        private bool IsWhitespace(int pos)
+        {
+            if (pos >= _input.Length)
+                return false;
+
+            return char.IsWhiteSpace(_input[pos]) &&
+                   !IsNewline(pos);
         }
 
         private void TokenizeString()
@@ -1604,7 +1673,9 @@ namespace TemplateInterpreter
             {
                 var token = Current();
 
-                if (token.Type == TokenType.Text)
+                if (token.Type == TokenType.Text ||
+                    token.Type == TokenType.Whitespace ||
+                    token.Type == TokenType.Newline)
                 {
                     nodes.Add(new TextNode(token.Value));
                     Advance();

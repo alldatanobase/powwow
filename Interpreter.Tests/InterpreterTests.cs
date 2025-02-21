@@ -952,19 +952,23 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens.Count, Is.EqualTo(8));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
-            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
-            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
-            Assert.That(tokens[2].Value, Is.EqualTo("*"));
-            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentStart));
             Assert.That(tokens[3].Value, Is.EqualTo("*"));
-            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
-            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
-            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("*"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[5].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[6].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[6].Value, Is.EqualTo(" "));
+            Assert.That(tokens[7].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[7].Value, Is.EqualTo("World"));
         }
 
         [Test]
@@ -980,19 +984,23 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens.Count, Is.EqualTo(8));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
-            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
-            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
-            Assert.That(tokens[2].Value, Is.EqualTo("*"));
-            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentStart));
             Assert.That(tokens[3].Value, Is.EqualTo("*"));
-            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
-            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
-            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("*"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[5].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[6].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[6].Value, Is.EqualTo(" "));
+            Assert.That(tokens[7].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[7].Value, Is.EqualTo("World"));
         }
 
         [Test]
@@ -1111,19 +1119,23 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens.Count, Is.EqualTo(8));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
-            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
-            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
-            Assert.That(tokens[2].Value, Is.EqualTo("*"));
-            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentStart));
             Assert.That(tokens[3].Value, Is.EqualTo("*"));
-            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
-            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
-            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("*"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[5].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[6].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[6].Value, Is.EqualTo(" "));
+            Assert.That(tokens[7].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[7].Value, Is.EqualTo("World"));
         }
 
         [Test]
@@ -2190,6 +2202,246 @@ Line 3
 
             // Act & Assert
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()));
+        }
+
+        [Test]
+        public void TokenizeBasicWhitespace_SingleSpace()
+        {
+            var tokens = _lexer.Tokenize("Hello World");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeBasicWhitespace_MultipleSpaces()
+        {
+            var tokens = _lexer.Tokenize("Hello    World");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo("    "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeBasicWhitespace_Tabs()
+        {
+            var tokens = _lexer.Tokenize("Hello\tWorld");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo("\t"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeBasicWhitespace_MixedWhitespace()
+        {
+            var tokens = _lexer.Tokenize("Hello \t  World");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" \t  "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeNewlines_SingleUnixNewline()
+        {
+            var tokens = _lexer.Tokenize("Hello\nWorld");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeNewlines_SingleWindowsNewline()
+        {
+            var tokens = _lexer.Tokenize("Hello\r\nWorld");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\r\n"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeNewlines_SingleMacNewline()
+        {
+            var tokens = _lexer.Tokenize("Hello\rWorld");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\r"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[2].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeNewlines_MultipleNewlines()
+        {
+            var tokens = _lexer.Tokenize("Hello\n\nWorld");
+            
+            Assert.That(tokens.Count, Is.EqualTo(4));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[2].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[3].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeMixedWhitespaceAndNewlines()
+        {
+            var tokens = _lexer.Tokenize("Hello  \n  World");
+            
+            Assert.That(tokens.Count, Is.EqualTo(5));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo("  "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[2].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[3].Value, Is.EqualTo("  "));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[4].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeDirectiveWithWhitespace()
+        {
+            var tokens = _lexer.Tokenize("Hello {{ name }}World");
+            
+            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[1].Value, Is.EqualTo(" "));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.Variable));
+            Assert.That(tokens[3].Value, Is.EqualTo("name"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[5].Value, Is.EqualTo("World"));
+        }
+
+        [Test]
+        public void TokenizeEmptyInput()
+        {
+            var tokens = _lexer.Tokenize("");
+            Assert.That(tokens.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void TokenizeOnlyWhitespace()
+        {
+            var tokens = _lexer.Tokenize("   \t  ");
+            
+            Assert.That(tokens.Count, Is.EqualTo(1));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[0].Value, Is.EqualTo("   \t  "));
+        }
+
+        [Test]
+        public void TokenizeOnlyNewlines()
+        {
+            var tokens = _lexer.Tokenize("\n\r\n\n");
+            
+            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[0].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\r\n"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[2].Value, Is.EqualTo("\n"));
+        }
+
+        [Test]
+        public void TokenizeComplexMixedContent()
+        {
+            var input = "Hello,\n" +
+                       "  {{name}}  \r\n" +
+                       "\tWelcome!";
+            
+            var tokens = _lexer.Tokenize(input);
+            
+            Assert.That(tokens.Count, Is.EqualTo(10));
+            Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[0].Value, Is.EqualTo("Hello,"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[1].Value, Is.EqualTo("\n"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[2].Value, Is.EqualTo("  "));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[3].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.Variable));
+            Assert.That(tokens[4].Value, Is.EqualTo("name"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[5].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[6].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[6].Value, Is.EqualTo("  "));
+            Assert.That(tokens[7].Type, Is.EqualTo(TokenType.Newline));
+            Assert.That(tokens[7].Value, Is.EqualTo("\r\n"));
+            Assert.That(tokens[8].Type, Is.EqualTo(TokenType.Whitespace));
+            Assert.That(tokens[8].Value, Is.EqualTo("\t"));
+            Assert.That(tokens[9].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[9].Value, Is.EqualTo("Welcome!"));
+        }
+
+        [Test]
+        public void TokenizePositionTracking()
+        {
+            var input = "Hello\n  World";
+            var tokens = _lexer.Tokenize(input);
+            
+            Assert.That(tokens.Count, Is.EqualTo(4));
+            Assert.That(tokens[0].Position, Is.EqualTo(0)); // "Hello"
+            Assert.That(tokens[1].Position, Is.EqualTo(5)); // "\n"
+            Assert.That(tokens[2].Position, Is.EqualTo(6)); // "  "
+            Assert.That(tokens[3].Position, Is.EqualTo(8)); // "World"
+        }
+
+        [Test]
+        public void ParserHandlesWhitespaceAndNewlinesAsText()
+        {
+            var input = "Hello\n  World";
+
+            // Evaluate with empty context to get the result
+            var result = _interpreter.Interpret(input, new ExpandoObject());
+            
+            // The result should preserve all whitespace and newlines
+            Assert.That(result, Is.EqualTo("Hello\n  World"));
         }
     }
 }
