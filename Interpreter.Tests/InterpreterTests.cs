@@ -952,11 +952,19 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens.Count, Is.EqualTo(6));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("*"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[3].Value, Is.EqualTo("*"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
         }
 
         [Test]
@@ -972,11 +980,19 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens.Count, Is.EqualTo(6));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("*"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[3].Value, Is.EqualTo("*"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
         }
 
         [Test]
@@ -989,10 +1005,14 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(6));
+            Assert.That(tokens.Count, Is.EqualTo(10));
             Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
                 TokenType.DirectiveStart,
                 TokenType.Variable,
+                TokenType.DirectiveEnd,
+                TokenType.DirectiveStart,
+                TokenType.CommentStart,
+                TokenType.CommentEnd,
                 TokenType.DirectiveEnd,
                 TokenType.DirectiveStart,
                 TokenType.Variable,
@@ -1010,8 +1030,12 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Count, Is.EqualTo(7));
             Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.CommentStart,
+                TokenType.CommentEnd,
+                TokenType.DirectiveEnd,
                 TokenType.DirectiveStart,
                 TokenType.Variable,
                 TokenType.DirectiveEnd
@@ -1039,8 +1063,16 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Count, Is.EqualTo(11));
             Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.CommentStart,
+                TokenType.CommentEnd,
+                TokenType.DirectiveEnd,
+                TokenType.DirectiveStart,
+                TokenType.CommentStart,
+                TokenType.CommentEnd,
+                TokenType.DirectiveEnd,
                 TokenType.DirectiveStart,
                 TokenType.Variable,
                 TokenType.DirectiveEnd
@@ -1057,8 +1089,12 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(3));
+            Assert.That(tokens.Count, Is.EqualTo(7));
             Assert.That(tokens.Select(t => t.Type).ToList(), Is.EqualTo(new[] {
+                TokenType.DirectiveStart,
+                TokenType.CommentStart,
+                TokenType.CommentEnd,
+                TokenType.DirectiveEnd,
                 TokenType.DirectiveStart,
                 TokenType.Variable,
                 TokenType.DirectiveEnd
@@ -1075,11 +1111,19 @@ user:password", result);
             var tokens = _lexer.Tokenize(template);
 
             // Assert
-            Assert.That(tokens.Count, Is.EqualTo(2));
+            Assert.That(tokens.Count, Is.EqualTo(6));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello "));
-            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.Text));
-            Assert.That(tokens[1].Value, Is.EqualTo(" World"));
+            Assert.That(tokens[1].Type, Is.EqualTo(TokenType.DirectiveStart));
+            Assert.That(tokens[1].Value, Is.EqualTo("{{"));
+            Assert.That(tokens[2].Type, Is.EqualTo(TokenType.CommentStart));
+            Assert.That(tokens[2].Value, Is.EqualTo("*"));
+            Assert.That(tokens[3].Type, Is.EqualTo(TokenType.CommentEnd));
+            Assert.That(tokens[3].Value, Is.EqualTo("*"));
+            Assert.That(tokens[4].Type, Is.EqualTo(TokenType.DirectiveEnd));
+            Assert.That(tokens[4].Value, Is.EqualTo("}}"));
+            Assert.That(tokens[5].Type, Is.EqualTo(TokenType.Text));
+            Assert.That(tokens[5].Value, Is.EqualTo(" World"));
         }
 
         [Test]

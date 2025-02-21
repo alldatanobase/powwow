@@ -350,8 +350,10 @@ namespace TemplateInterpreter
     public enum TokenType
     {
         Text,
-        DirectiveStart,    // {{
-        DirectiveEnd,      // }}
+        Whitespace,      
+        Newline,         
+        DirectiveStart,    // {{ or {{-
+        DirectiveEnd,      // }} or -}}
         Variable,          // alphanumeric+dots
         String,            // "..."
         Number,            // decimal
@@ -395,7 +397,9 @@ namespace TemplateInterpreter
         Literal,           // #literal
         EndLiteral,        // /literal
         Capture,           // #capture
-        EndCapture         // /capture
+        EndCapture,        // /capture
+        CommentStart,      // *
+        CommentEnd         // *
     }
 
     public class Lexer
@@ -417,15 +421,18 @@ namespace TemplateInterpreter
 
             while (_position < _input.Length)
             {
-                if (TryMatch("{{*"))
+                if (TryMatch("{{"))
                 {
-                    SkipComment();
-                    continue;
-                }
-                else if (TryMatch("{{"))
-                {
-                    _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
-                    _position += 2;
+                    if (PeekNext().Equals('-'))
+                    {
+                        _tokens.Add(new Token(TokenType.DirectiveStart, "{{-", _position));
+                        _position += 3;
+                    }
+                    else
+                    {
+                        _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
+                        _position += 2;
+                    }
                     TokenizeDirective();
                 }
                 else
@@ -437,16 +444,16 @@ namespace TemplateInterpreter
             return _tokens;
         }
 
-        private void SkipComment()
+        private void TokenizeComment()
         {
-            // Skip the initial "{{*"
-            _position += 3;
-
             while (_position < _input.Length)
             {
                 if (TryMatch("*}}"))
                 {
-                    _position += 3; // Skip past "*}}"
+                    _tokens.Add(new Token(TokenType.CommentEnd, "*", _position));
+                    _position++; // Skip past "*"
+                    _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
+                    _position += 2; // Skip past "}}"
                     return;
                 }
                 _position++;
@@ -457,37 +464,78 @@ namespace TemplateInterpreter
 
         private void TokenizeDirective()
         {
+            if (TryMatch("*"))
+            {
+                _tokens.Add(new Token(TokenType.CommentStart, "*", _position));
+                _position++;
+                TokenizeComment();
+                return;
+            }
+
+            SkipWhitespace();
+
             if (TryMatch("#literal"))
             {
-                SkipWhitespace();
-
                 _tokens.Add(new Token(TokenType.Literal, "#literal", _position));
                 _position += 8;
 
                 SkipWhitespace();
 
-                if (!TryMatch("}}"))
+                if (!TryMatch("}}") && !TryMatch("-}}"))
                 {
                     throw new Exception("Unterminated literal directive");
                 }
-                _position += 2; // Skip }}
+
+                if (TryMatch("}}"))
+                {
+                    _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
+                    _position += 2; // Skip }}
+                }
+                else
+                {
+                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
+                    _position += 3; // Skip -}}
+                }
 
                 // Capture everything until we find the closing literal directive
                 var contentStart = _position;
                 var literalStackCount = 0;
+
                 while (_position < _input.Length)
                 {
                     int originalPosition = _position;
                     int currentLookahead = _position;
-                    if (TryMatch("{{"))
+
+                    if (TryMatch("{{") || TryMatch("{{-"))
                     {
-                        currentLookahead += 2 + WhitespaceCount();
+                        Token directiveStartToken = null;
+
+                        if (TryMatch("{{"))
+                        {
+                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{", currentLookahead);
+                            currentLookahead += 2 + WhitespaceCount();
+                        }
+                        else
+                        {
+                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{-", currentLookahead);
+                            currentLookahead += 3 + WhitespaceCount();
+                        }
+
                         if (TryMatchAt("#literal", currentLookahead))
                         {
                             currentLookahead += 8 + WhitespaceCount();
+
                             if (TryMatchAt("}}", currentLookahead))
                             {
                                 currentLookahead += 2;
+                                _position += currentLookahead - originalPosition;
+                                literalStackCount++;
+                                continue;
+                            }
+
+                            if (TryMatchAt("-}}", currentLookahead))
+                            {
+                                currentLookahead += 3;
                                 _position += currentLookahead - originalPosition;
                                 literalStackCount++;
                                 continue;
@@ -496,10 +544,24 @@ namespace TemplateInterpreter
 
                         if (TryMatchAt("/literal", currentLookahead))
                         {
+                            var endLiteralToken = new Token(TokenType.EndLiteral, "/literal", currentLookahead);
                             currentLookahead += 8 + WhitespaceCount();
-                            if (TryMatchAt("}}", currentLookahead))
+
+                            if (TryMatchAt("}}", currentLookahead) || TryMatchAt("-}}", currentLookahead))
                             {
-                                currentLookahead += 2;
+                                Token directiveEndToken = null;
+
+                                if (TryMatchAt("}}", currentLookahead))
+                                {
+                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "}}", currentLookahead);
+                                    currentLookahead += 2;
+                                }
+                                else
+                                {
+                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "-}}", currentLookahead);
+                                    currentLookahead += 3;
+                                }
+
                                 if (literalStackCount > 0)
                                 {
                                     literalStackCount--;
@@ -509,6 +571,9 @@ namespace TemplateInterpreter
                                     // We found the end, create a token with the raw content
                                     var content = _input.Substring(contentStart, _position - contentStart);
                                     _tokens.Add(new Token(TokenType.Text, content, contentStart));
+                                    _tokens.Add(directiveStartToken);
+                                    _tokens.Add(endLiteralToken);
+                                    _tokens.Add(directiveEndToken);
                                     _position += currentLookahead - originalPosition; // Skip {{/literal}} plus whitespace
                                     return;
                                 }
@@ -518,6 +583,7 @@ namespace TemplateInterpreter
 
                     _position++;
                 }
+
                 throw new Exception("Unterminated literal directive");
             }
 
@@ -529,6 +595,13 @@ namespace TemplateInterpreter
                 {
                     _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
                     _position += 2;
+                    return;
+                }
+
+                if (TryMatch("-}}"))
+                {
+                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
+                    _position += 3;
                     return;
                 }
 
@@ -780,10 +853,12 @@ namespace TemplateInterpreter
         private void TokenizeText()
         {
             var start = _position;
+
             while (_position < _input.Length && !TryMatch("{{"))
             {
                 _position++;
             }
+
             if (_position > start)
             {
                 _tokens.Add(new Token(TokenType.Text, _input.Substring(start, _position - start), start));
@@ -1534,12 +1609,22 @@ namespace TemplateInterpreter
                     nodes.Add(new TextNode(token.Value));
                     Advance();
                 }
+                else if (token.Type == TokenType.CommentStart)
+                {
+                    Advance();
+                    Expect(TokenType.CommentEnd);
+                    Advance();
+                }
                 else if (token.Type == TokenType.DirectiveStart)
                 {
                     // Look at the next token to determine what kind of directive we're dealing with
                     var nextToken = _tokens[_position + 1];
 
-                    if (nextToken.Type == TokenType.Let)
+                    if (nextToken.Type == TokenType.CommentStart)
+                    {
+                        ParseComment();
+                    }
+                    else if (nextToken.Type == TokenType.Let)
                     {
                         nodes.Add(ParseLetStatement());
                     }
@@ -1590,6 +1675,18 @@ namespace TemplateInterpreter
             return new TemplateNode(nodes);
         }
 
+        private void ParseComment()
+        {
+            Advance(); // Skip {{
+            Advance(); // Skip *
+
+            Expect(TokenType.CommentEnd);
+            Advance();
+
+            Expect(TokenType.DirectiveEnd);
+            Advance();
+        }
+
         private AstNode ParseLetStatement()
         {
             Advance(); // Skip {{
@@ -1638,10 +1735,21 @@ namespace TemplateInterpreter
             Advance(); // Skip {{
             Advance(); // Skip #literal
 
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
             // The next token should be the raw content
             Expect(TokenType.Text);
             var content = Current().Value;
             Advance();
+
+            // Parse the closing capture tag
+            Expect(TokenType.DirectiveStart);
+            Advance(); // Skip {{
+            Expect(TokenType.EndLiteral);
+            Advance(); // Skip /capture
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
 
             return new LiteralNode(content);
         }
