@@ -421,18 +421,16 @@ namespace TemplateInterpreter
 
             while (_position < _input.Length)
             {
-                if (TryMatch("{{"))
+                if (TryMatch("{{-"))
                 {
-                    if (PeekNext().Equals('-'))
-                    {
-                        _tokens.Add(new Token(TokenType.DirectiveStart, "{{-", _position));
-                        _position += 3;
-                    }
-                    else
-                    {
-                        _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
-                        _position += 2;
-                    }
+                    _tokens.Add(new Token(TokenType.DirectiveStart, "{{-", _position));
+                    _position += 3;
+                    TokenizeDirective();
+                }
+                else if (TryMatch("{{"))
+                {
+                    _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
+                    _position += 2;
                     TokenizeDirective();
                 }
                 else if (IsNewline(_position))
@@ -462,6 +460,14 @@ namespace TemplateInterpreter
                     _position++; // Skip past "*"
                     _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
                     _position += 2; // Skip past "}}"
+                    return;
+                }
+                else if (TryMatch("*-}}"))
+                {
+                    _tokens.Add(new Token(TokenType.CommentEnd, "*", _position));
+                    _position++; // Skip past "*"
+                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
+                    _position += 3; // Skip past "-}}"
                     return;
                 }
                 _position++;
@@ -1144,6 +1150,36 @@ namespace TemplateInterpreter
         }
     }
 
+    public class WhitespaceNode : AstNode
+    {
+        private readonly string _text;
+
+        public WhitespaceNode(string text)
+        {
+            _text = text;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            return _text;
+        }
+    }
+
+    public class NewlineNode : AstNode
+    {
+        private readonly string _text;
+
+        public NewlineNode(string text)
+        {
+            _text = text;
+        }
+
+        public override dynamic Evaluate(ExecutionContext context)
+        {
+            return _text;
+        }
+    }
+
     public class InvocationNode : AstNode
     {
         private readonly AstNode _callable;
@@ -1673,18 +1709,34 @@ namespace TemplateInterpreter
             {
                 var token = Current();
 
-                if (token.Type == TokenType.Text ||
-                    token.Type == TokenType.Whitespace ||
-                    token.Type == TokenType.Newline)
+                if (token.Type == TokenType.Text)
                 {
                     nodes.Add(new TextNode(token.Value));
                     Advance();
                 }
-                else if (token.Type == TokenType.CommentStart)
+                else if (token.Type == TokenType.Whitespace)
                 {
-                    Advance();
-                    Expect(TokenType.CommentEnd);
-                    Advance();
+                    if (CheckSkipWhitespace())
+                    {
+                        Advance();
+                    }
+                    else
+                    {
+                        nodes.Add(new WhitespaceNode(token.Value));
+                        Advance();
+                    }
+                }
+                else if (token.Type == TokenType.Newline)
+                {
+                    if (CheckSkipNewline())
+                    {
+                        Advance();
+                    }
+                    else
+                    {
+                        nodes.Add(new NewlineNode(token.Value));
+                        Advance();
+                    }
                 }
                 else if (token.Type == TokenType.DirectiveStart)
                 {
@@ -2316,6 +2368,50 @@ namespace TemplateInterpreter
             {
                 _position = pos;
             }
+        }
+
+        private bool CheckSkipNewline()
+        {
+            var token = Current();
+
+            if (token.Type == TokenType.Newline &&
+                (_tokens.Count >= _position + 1 &&
+                 _tokens[_position + 1].Type == TokenType.DirectiveStart &&
+                 _tokens[_position + 1].Value == "{{-") ||
+                (_tokens.Count >= _position + 2 &&
+                 _tokens[_position + 1].Type == TokenType.Whitespace &&
+                 _tokens[_position + 2].Type == TokenType.DirectiveStart &&
+                 _tokens[_position + 2].Value == "{{-") ||
+                (_position > 0 &&
+                 _tokens[_position - 1].Type == TokenType.DirectiveEnd &&
+                 _tokens[_position - 1].Value == "-}}") ||
+                (_position > 1 &&
+                 _tokens[_position - 1].Type == TokenType.Whitespace &&
+                 _tokens[_position - 2].Type == TokenType.DirectiveEnd &&
+                 _tokens[_position - 2].Value == "-}}"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool CheckSkipWhitespace()
+        {
+            var token = Current();
+
+            if (token.Type == TokenType.Whitespace &&
+                (_tokens.Count > _position + 1 &&
+                 _tokens[_position + 1].Type == TokenType.DirectiveStart &&
+                 _tokens[_position + 1].Value == "{{-") ||
+                (_position > 0 &&
+                 _tokens[_position - 1].Type == TokenType.DirectiveEnd &&
+                 _tokens[_position - 1].Value == "-}}"))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private bool IsComparisonOperator(TokenType type)

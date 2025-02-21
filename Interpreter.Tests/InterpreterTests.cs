@@ -2443,5 +2443,205 @@ Line 3
             // The result should preserve all whitespace and newlines
             Assert.That(result, Is.EqualTo("Hello\n  World"));
         }
+
+        [Test]
+        public void ConditionalWithNestedContent()
+        {
+            // Arrange
+            var input = "{{#let x = 4}}{{#if x == 4}}{{x}} {{#for y in [1, 2, 3]}}{{y}} {{/for}}{{#else}}{{x}}foo{{/if}}hello world";
+
+            // Act
+            var result = _interpreter.Interpret(input, new ExpandoObject());
+
+            // Assert
+            Assert.That(result, Is.EqualTo("4 1 2 3 hello world"));
+        }
+
+        [Test]
+        public void NoTrimming_PreservesWhitespace()
+        {
+            var template = "Hello  {{ name }}  World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Hello  Test  World"));
+        }
+
+        [Test]
+        public void LeftTrimming_RemovesLeadingWhitespace()
+        {
+            var template = "Hello  {{- name }} World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("HelloTest World"));
+        }
+
+        [Test]
+        public void RightTrimming_RemovesTrailingWhitespace()
+        {
+            var template = "Hello {{ name -}}  World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Hello TestWorld"));
+        }
+
+        [Test]
+        public void BothTrimming_RemovesBothWhitespaces()
+        {
+            var template = "Hello  {{- name -}}  World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("HelloTestWorld"));
+        }
+
+        [Test]
+        public void LeftTrimming_RemovesLeadingNewlineAndWhitespace()
+        {
+            var template = "Hello\n  {{- name }} World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("HelloTest World"));
+        }
+
+        [Test]
+        public void RightTrimming_RemovesTrailingNewlineAndWhitespace()
+        {
+            var template = "Hello {{ name -}}  \nWorld";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Hello TestWorld"));
+        }
+
+        [Test]
+        public void BothTrimming_RemovesBothNewlinesAndWhitespaces()
+        {
+            var template = "Hello\n  {{- name -}}  \nWorld";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("HelloTestWorld"));
+        }
+
+        [Test]
+        public void MultipleDirectives_HandlesTrimmingCorrectly()
+        {
+            var template = "Hello\n  {{- first -}}  \n  {{- second -}}  \nWorld";
+            dynamic data = new ExpandoObject();
+            data.first = "Test1";
+            data.second = "Test2";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("HelloTest1Test2World"));
+        }
+
+        [Test]
+        public void IfStatement_HandlesTrimmingCorrectly()
+        {
+            var template = "Start\n  {{- #if true -}}\n    Content\n  {{- /if -}}  \nEnd";
+            
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            
+            Assert.That(result, Is.EqualTo("Start    ContentEnd"));
+        }
+
+        [Test]
+        public void ForLoop_HandlesTrimmingCorrectly()
+        {
+            var template = "Start\n  {{- #for item in items -}}\n    {{ item -}}  \n  {{- /for -}}  \nEnd";
+            dynamic data = new ExpandoObject();
+            data.items = new List<decimal>() { 1, 2, 3 };
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Start    1    2    3End"));
+        }
+
+        [Test]
+        public void Comments_HandlesTrimmingCorrectly()
+        {
+            var template = "Start\n  {{-* Comment *-}}  \nEnd";
+            
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            
+            Assert.That(result, Is.EqualTo("StartEnd"));
+        }
+
+        [Test]
+        public void MixedContent_HandlesTrimmingCorrectly()
+        {
+            var template = @"Hello
+  {{- #if true -}}
+    {{ name -}}
+  {{- /if -}}
+World";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Hello    TestWorld"));
+        }
+
+        [Test]
+        public void OnlyWhitespace_HandlesTrimmingCorrectly()
+        {
+            var template = "  {{- name -}}  ";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Test"));
+        }
+
+        [Test]
+        public void MultipleNewlines_HandlesTrimmingCorrectly()
+        {
+            var template = "Hello\n\n  {{- name -}}  \n\nWorld";
+            dynamic data = new ExpandoObject();
+            data.name = "Test";
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Hello\nTest\nWorld"));
+        }
+
+        [Test]
+        public void ComplexNesting_HandlesTrimmingCorrectly()
+        {
+            var template = @"Start
+  {{- #if true -}}
+    {{- #for item in items -}}
+      {{ item -}}
+    {{- /for -}}
+  {{- /if -}}
+End";
+            dynamic data = new ExpandoObject();
+            data.items = new List<decimal>() { 1, 2, 3 };
+            
+            var result = _interpreter.Interpret(template, data);
+            
+            Assert.That(result, Is.EqualTo("Start      1      2      3End"));
+        }
     }
 }
