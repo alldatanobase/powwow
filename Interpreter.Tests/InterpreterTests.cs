@@ -2698,5 +2698,296 @@ End";
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Duplicate field name 'a' defined at position 21");
         }
+
+        [Test]
+        public void BasicStatementList_Works()
+        {
+            var template = "{{ ((a) => x = 1, y = 2, x + a * y)(3) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("7"));
+        }
+
+        [Test]
+        public void SingleStatement_Works()
+        {
+            var template = "{{ ((a) => x = a * 2, x)(3) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("6"));
+        }
+
+        [Test]
+        public void MultipleStatements_WithWhitespaceAndNewlines_Works()
+        {
+            var template = @"{{ 
+                #let fn = (n) =>
+                    count = length(n),
+                    squared = count * count,
+                    squared + 1
+            }}{{ fn(""hello"") }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("26")); // length is 5, squared is 25, plus 1 is 26
+        }
+
+        [Test]
+        public void ParameterNameConflict_ThrowsException()
+        {
+            var template = "{{ (a) => a = 1, a }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Variable name 'a' conflicts with parameter name");
+        }
+
+        [Test]
+        public void ExternalVariableConflict_ThrowsException()
+        {
+            var template = "{{ #let x = 2 }}{{ (() => x = 3, x)() }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void IteratorConflict_ThrowsException()
+        {
+            var template = "{{ #for x in [1,2,3] }}{{ (() => x = 3, x)() }}{{ /for }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void DataFieldConflict_ThrowsException()
+        {
+            var data = new ExpandoObject() as IDictionary<string, object>;
+            data["x"] = "hello world";
+            
+            var template = "{{ (a) => x = 'foo', concat(a, x) }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void FunctionNameConflict_ThrowsException()
+        {
+            var template = "{{ (a) => length = 3, a * length }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Cannot define variable 'length' as it conflicts with an existing function");
+        }
+
+        [Test]
+        public void VariableReassignment_ThrowsException()
+        {
+            var template = "{{ () => x = 1, x = 2, x }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Cannot reassign variable 'x' in lambda function");
+        }
+
+        [Test]
+        public void NestedLambdas_WithStatements_Works()
+        {
+            var template = @"{{ 
+                #let fn = (x) => 
+                    mult = x * 2,
+                    (y) => 
+                        sum = mult + y,
+                        sum * 2
+            }}{{ fn(3)(4) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("20")); // (3 * 2 + 4) * 2 = 20
+        }
+
+        [Test]
+        public void LambdaWithoutStatements_OnlyExpression_Works()
+        {
+            var template = "{{ ((x) => x * 2)(5) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("10"));
+        }
+
+        [Test]
+        public void StatementWithoutComma_ThrowsException()
+        {
+            var template = "{{ () => x = 1 y = 2, x + y }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Expected comma after statement");
+        }
+
+        [Test]
+        public void StatementWithoutAssignment_ThrowsException()
+        {
+            var template = "{{ () => x, y = 2, x + y }}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Expected assignment after variable name");
+        }
+
+        [Test]
+        public void ComplexExpressionInStatements_Works()
+        {
+            var template = @"{{ #let fn =
+                (arr) => 
+                    filtered = filter(arr, (x) => x > 2),
+                    sum = reduce(filtered, (acc, x) => acc + x, 0),
+                    sum / length(filtered)
+            }}{{ fn([1,2,3,4,5]) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("4")); // Average of [3,4,5] is 4
+        }
+
+        [Test]
+        public void StatementVariablesInScope_ForLaterStatements_Works()
+        {
+            var template = "{{ (() => x = 10, y = x * 2, z = y + 5, z)() }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("25")); // 10 * 2 + 5 = 25
+        }
+
+        [Test]
+        public void ClosureCapturesVariablesAndParams()
+        {
+            var template = "{{ #let x = ((v) => a = 5, (b) => b * a * v)(5) }}{{ x(5) }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+            Assert.That(result, Is.EqualTo("125"));
+        }
+
+        [Test]
+        public void Concat_ListAndString_ReturnsNewListWithItem()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list = new List<string> { "a", "b", "c" };
+            data.item = "d";
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a, b, c, d"));
+        }
+
+        [Test]
+        public void Concat_ListAndNumber_ReturnsNewListWithItem()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list = new List<string> { "a", "b", "c" };
+            data.item = 1;
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a, b, c, 1"));
+        }
+
+        [Test]
+        public void Concat_ListAndBool_ReturnsNewListWithItem()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list = new List<string> { "a", "b", "c" };
+            data.item = true;
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a, b, c, True"));
+        }
+
+        [Test]
+        public void Concat_ListAndList_ReturnsNewCombinedList()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list1, list2) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list1 = new List<string> { "a", "b" };
+            data.list2 = new List<string> { "c", "d" };
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a, b, c, d"));
+        }
+
+        [Test]
+        public void Concat_EmptyListAndItem_ReturnsNewListWithOnlyItem()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list = new List<string>();
+            data.item = "a";
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a"));
+        }
+
+        [Test]
+        public void Concat_EmptyLists_ReturnsEmptyString()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list1, list2) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list1 = new List<string>();
+            data.list2 = new List<string>();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.Empty);
+        }
+
+        [Test]
+        public void Concat_MixedTypes_HandlesHeterogeneousData()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.list = new List<object> { "a", 1, true };
+            data.item = 2.5;
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("a, 1, True, 2.5"));
+        }
+
+        [Test]
+        public void Concat_ArrayAndList_ConcatenatesCorrectly()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(array, list) }}{{ join(result, "", "") }}";
+            dynamic data = new ExpandoObject();
+            data.array = new[] { 1, 2, 3 };
+            data.list = new List<int> { 4, 5, 6 };
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1, 2, 3, 4, 5, 6"));
+        }
+
+        [Test]
+        public void Concat_ListLength_ValidatesResultLength()
+        {
+            // Arrange
+            var template = @"{{ #let result = concat(list1, list2) }}{{ length(result) }}";
+            dynamic data = new ExpandoObject();
+            data.list1 = new List<string> { "a", "b" };
+            data.list2 = new List<string> { "c", "d" };
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("4"));
+        }
     }
 }

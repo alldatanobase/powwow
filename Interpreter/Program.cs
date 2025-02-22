@@ -141,7 +141,7 @@ namespace TemplateInterpreter
             _functionRegistry = functionRegistry;
         }
 
-        public void DefineVariable(string name, dynamic value)
+        public virtual void DefineVariable(string name, dynamic value)
         {
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
@@ -195,7 +195,7 @@ namespace TemplateInterpreter
             return _data;
         }
 
-        public bool TryResolveValue(string path, out dynamic value)
+        public virtual bool TryResolveValue(string path, out dynamic value)
         {
             value = null;
             var parts = path.Split('.');
@@ -251,6 +251,7 @@ namespace TemplateInterpreter
     {
         private readonly ExecutionContext _parentContext;
         private readonly Dictionary<string, dynamic> _parameters;
+        private readonly Dictionary<string, dynamic> _variables;
 
         public LambdaExecutionContext(
             ExecutionContext parentContext,
@@ -260,6 +261,7 @@ namespace TemplateInterpreter
         {
             _parentContext = parentContext;
             _parameters = new Dictionary<string, dynamic>();
+            _variables = new Dictionary<string, dynamic>();
 
             // Map parameter names to values
             for (int i = 0; i < parameterNames.Count; i++)
@@ -276,6 +278,29 @@ namespace TemplateInterpreter
         public dynamic GetParameter(string name)
         {
             return _parameters[name];
+        }
+
+        public override void DefineVariable(string name, dynamic value)
+        {
+            // Check if already defined as a variable
+            if (_variables.ContainsKey(name))
+            {
+                throw new Exception($"Cannot reassign variable '{name}' in lambda function");
+            }
+
+            // Check if defined as a parameter
+            if (_parameters.ContainsKey(name))
+            {
+                throw new Exception($"Cannot define variable '{name}' as it conflicts with a parameter name");
+            }
+
+            // Check parent context for conflicts
+            if (_parentContext.TryResolveValue(name, out _))
+            {
+                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
+            }
+
+            _variables[name] = value;
         }
 
         public bool TryGetParameterFromAnyContext(string name, out dynamic value)
@@ -303,6 +328,47 @@ namespace TemplateInterpreter
             return false;
         }
 
+        public override bool TryResolveValue(string path, out dynamic value)
+        {
+            value = null;
+            var parts = path.Split('.');
+            dynamic current = null;
+
+            if (_variables.ContainsKey(parts[0]))
+            {
+                current = _variables[parts[0]];
+                parts = parts.Skip(1).ToArray();
+            }
+            else if (_parameters.ContainsKey(parts[0]))
+            {
+                current = _parameters[parts[0]];
+                parts = parts.Skip(1).ToArray();
+            }
+            else
+            {
+                return _parentContext.TryResolveValue(path, out value);
+            }
+
+            foreach (var part in parts)
+            {
+                try
+                {
+                    current = ((IDictionary<string, object>)current)[part];
+                    if (TypeHelper.IsConvertibleToDecimal(current))
+                    {
+                        current = (decimal)current;
+                    }
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            value = current;
+            return true;
+        }
+
         public override dynamic ResolveValue(string path)
         {
             var parts = path.Split('.');
@@ -311,6 +377,25 @@ namespace TemplateInterpreter
             if (_parameters.ContainsKey(parts[0]))
             {
                 dynamic current = _parameters[parts[0]];
+
+                // Handle nested property access for parameters
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    try
+                    {
+                        current = ((IDictionary<string, object>)current)[parts[i]];
+                    }
+                    catch
+                    {
+                        throw new Exception($"Unable to resolve path: {path}");
+                    }
+                }
+
+                return current;
+            }
+            else if (_variables.ContainsKey(parts[0]))
+            {
+                dynamic current = _variables[parts[0]];
 
                 // Handle nested property access for parameters
                 for (int i = 1; i < parts.Length; i++)
@@ -1283,21 +1368,50 @@ namespace TemplateInterpreter
     public class LambdaNode : AstNode
     {
         private readonly List<string> _parameters;
-        private readonly AstNode _expression;
+        private readonly List<KeyValuePair<string, AstNode>> _statements;
+        private readonly AstNode _finalExpression;
 
-        public LambdaNode(List<string> parameters, AstNode expression, FunctionRegistry functionRegistry)
+        public LambdaNode(
+            List<string> parameters,
+            List<KeyValuePair<string, AstNode>> statements,
+            AstNode finalExpression,
+            FunctionRegistry functionRegistry)
         {
             // Validate parameter names against function registry
+            var seenParams = new HashSet<string>();
             foreach (var param in parameters)
             {
                 if (functionRegistry.HasFunction(param))
                 {
                     throw new Exception($"Parameter name '{param}' conflicts with an existing function name");
                 }
+                if (!seenParams.Add(param))
+                {
+                    throw new Exception($"Parameter name '{param}' is already defined");
+                }
+            }
+
+            // Validate statement variable names don't conflict with parameters, each other, or functions in registry
+            var seenVariables = new HashSet<string>();
+            foreach (var statement in statements)
+            {
+                if (parameters.Contains(statement.Key))
+                {
+                    throw new Exception($"Variable name '{statement.Key}' conflicts with parameter name");
+                }
+                if (functionRegistry.HasFunction(statement.Key))
+                {
+                    throw new Exception($"Variable name '{statement.Key}' conflicts with an existing function name");
+                }
+                if (!seenVariables.Add(statement.Key))
+                {
+                    throw new Exception($"Variable '{statement.Key}' is already defined");
+                }
             }
 
             _parameters = parameters;
-            _expression = expression;
+            _statements = statements;
+            _finalExpression = finalExpression;
         }
 
         public override dynamic Evaluate(ExecutionContext context)
@@ -1308,7 +1422,15 @@ namespace TemplateInterpreter
             {
                 // Create a new context that includes both captured context and new parameters
                 var lambdaContext = new LambdaExecutionContext(context, _parameters, args);
-                return _expression.Evaluate(lambdaContext);
+
+                // Execute each statement in order
+                foreach (var statement in _statements)
+                {
+                    var value = statement.Value.Evaluate(lambdaContext);
+                    lambdaContext.DefineVariable(statement.Key, value);
+                }
+
+                return _finalExpression.Evaluate(lambdaContext);
             });
         }
     }
@@ -1940,6 +2062,7 @@ namespace TemplateInterpreter
             Advance(); // Skip (
 
             var parameters = new List<string>();
+            var statements = new List<KeyValuePair<string, AstNode>>();
 
             // Parse parameters
             if (Current().Type != TokenType.RightParen)
@@ -1968,9 +2091,33 @@ namespace TemplateInterpreter
             Expect(TokenType.Arrow);
             Advance(); // Skip =>
 
-            var expression = ParseExpression();
+            // Parse statement list
+            while (true)
+            {
+                if (Current().Type != TokenType.Variable ||
+                    _tokens.Count < _position + 1 ||
+                    _tokens[_position + 1].Type != TokenType.Assignment)
+                {
+                    // If we don't see a variable or next token is not assignment, this must be the final expression
+                    var finalExpression = ParseExpression();
+                    return new LambdaNode(parameters, statements, finalExpression, _functionRegistry);
+                }
 
-            return new LambdaNode(parameters, expression, _functionRegistry);
+                var variableName = Current().Value;
+                Advance();
+
+                Expect(TokenType.Assignment);
+                Advance();
+
+                var expression = ParseExpression();
+                statements.Add(new KeyValuePair<string, AstNode>(variableName, expression));
+
+                if (Current().Type != TokenType.Comma)
+                {
+                    throw new Exception($"Expected comma after statement at position {Current().Position}");
+                }
+                Advance(); // Skip comma
+            }
         }
 
         private AstNode ParseObjectCreation()
@@ -2870,6 +3017,85 @@ namespace TemplateInterpreter
                     return array.Cast<object>()
                         .Aggregate((object)initialValue, (acc, curr) =>
                             reducer(new List<dynamic> { acc, curr }));
+                });
+
+            Register("concat",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(bool))
+                },
+                args =>
+                {
+                    var enumerable = args[0] as System.Collections.IEnumerable;
+                    var item = args[1];
+
+                    if (enumerable == null)
+                        throw new Exception("concat function requires an array as first argument");
+
+                    // Convert the enumerable to a list and add the new item
+                    var result = enumerable.Cast<object>().ToList();
+                    result.Add(item);
+
+                    return result;
+                });
+
+            Register("concat",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(decimal))
+                },
+                args =>
+                {
+                    var enumerable = args[0] as System.Collections.IEnumerable;
+                    var item = args[1];
+
+                    if (enumerable == null)
+                        throw new Exception("concat function requires an array as first argument");
+
+                    // Convert the enumerable to a list and add the new item
+                    var result = enumerable.Cast<object>().ToList();
+                    result.Add(item);
+
+                    return result;
+                });
+
+            Register("concat",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var enumerable = args[0] as System.Collections.IEnumerable;
+                    var item = args[1];
+
+                    if (enumerable == null)
+                        throw new Exception("concat function requires an array as first argument");
+
+                    // Convert the enumerable to a list and add the new item
+                    var result = enumerable.Cast<object>().ToList();
+                    result.Add(item);
+
+                    return result;
+                });
+
+            Register("concat",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                args =>
+                {
+                    var first = args[0] as System.Collections.IEnumerable;
+                    var second = args[1] as System.Collections.IEnumerable;
+
+                    if (first == null || second == null)
+                        throw new Exception("concat function requires both arguments to be arrays");
+
+                    // Combine both enumerables into a single list
+                    var result = first.Cast<object>().Concat(second.Cast<object>()).ToList();
+
+                    return result;
                 });
 
             Register("take",
