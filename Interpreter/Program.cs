@@ -2682,6 +2682,20 @@ namespace TemplateInterpreter
                     return str.Length;
                 });
 
+            Register("empty",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(string))
+                },
+                args =>
+                {
+                    var str = args[0] as string;
+                    if (str == null)
+                    {
+                        throw new Exception("length function requires a string argument");
+                    }
+                    return string.IsNullOrEmpty(str);
+                });
+
             Register("concat",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string)),
