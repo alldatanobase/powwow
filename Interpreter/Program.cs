@@ -2317,6 +2317,12 @@ namespace TemplateInterpreter
                 Advance();
             }
 
+            // Handle any invocations that follow nested object invocation
+            while (_position < _tokens.Count && Current().Type == TokenType.LeftParen)
+            {
+                expr = ParseInvocation(expr);
+            }
+
             return expr;
         }
 

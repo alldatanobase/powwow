@@ -7,6 +7,7 @@ using System.Web.Script.Serialization;
 using Moq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
+using System.Security.Cryptography;
 
 namespace TemplateInterpreter.Tests
 {
@@ -2642,6 +2643,26 @@ End";
             var result = _interpreter.Interpret(template, data);
             
             Assert.That(result, Is.EqualTo("Start      1      2      3End"));
+        }
+
+        [Test]
+        public void ObjectFunctionCreation()
+        {
+            // Arrange & Act
+            var result1 = _interpreter.Interpret("{{#let o = obj(fn: (a) => a * 5, n: 5)}}{{o.fn(o.n)}}", new ExpandoObject());
+
+            // Assert
+            Assert.That(result1, Is.EqualTo("25"));
+        }
+
+        [Test]
+        public void ArrayFunctionCreation()
+        {
+            // Arrange & Act
+            var result1 = _interpreter.Interpret("{{#let fns = [(a) => a * 2, (a) => a * 5]}}{{#for fn in fns}}{{fn(5)}} {{/for}}", new ExpandoObject());
+
+            // Assert
+            Assert.That(result1, Is.EqualTo("10 25 "));
         }
     }
 }
