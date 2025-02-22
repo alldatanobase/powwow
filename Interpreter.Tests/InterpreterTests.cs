@@ -2690,5 +2690,13 @@ End";
             // Assert
             Assert.That(result1, Is.EqualTo("10 25 "));
         }
+
+        [Test]
+        public void ObjectPropertyNameDefinedMultipleTimes()
+        {
+            var template = "{{#let x = obj(a: 1, a: 2)}}{{x.a}}";
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+                "Duplicate field name 'a' defined at position 21");
+        }
     }
 }

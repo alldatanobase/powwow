@@ -1988,6 +1988,10 @@ namespace TemplateInterpreter
                 }
 
                 var fieldName = Current().Value;
+                if (fields.Any(f => f.Key == fieldName))
+                {
+                    throw new Exception($"Duplicate field name '{fieldName}' defined at position {Current().Position}");
+                }
                 Advance();
 
                 // Parse colon
