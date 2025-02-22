@@ -2160,6 +2160,32 @@ Line 3
         }
 
         [Test]
+        public void Fetch_WithAliasedDotValues_ConvertsCorrectly()
+        {
+            // Arrange
+            var fetchXml = "<fetch><entity name='account'><attribute name='contact_name' /></entity></fetch>";
+
+            var entityCollection = new EntityCollection(new List<Entity>
+            {
+                new Entity("account")
+                {
+                    ["contact.name"] = new AliasedValue("contact", "fullname", "John Doe")
+                }
+            });
+
+            _mockOrgService
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
+                .Returns(entityCollection);
+
+            // Act
+            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ get(first(accounts), \"contact.name\") }}";
+            var result = _interpreter.Interpret(template, new ExpandoObject());
+
+            // Assert
+            Assert.That(result, Is.EqualTo("John Doe"));
+        }
+
+        [Test]
         public void Fetch_WithNoDataverseService_ThrowsException()
         {
             // Arrange
