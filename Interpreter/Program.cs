@@ -459,14 +459,14 @@ namespace TemplateInterpreter
         Divide,            // /
         LeftParen,         // (
         RightParen,        // )
-        For,               // #for
+        For,               // for
         In,                // in
-        If,                // #if
-        ElseIf,            // #elseif
-        Else,              // #else
+        If,                // if
+        ElseIf,            // elseif
+        Else,              // else
         EndFor,            // /for
         EndIf,             // /if
-        Let,               // #let
+        Let,               // let
         Assignment,        // =
         Function,          // function name
         Comma,             // ,
@@ -478,10 +478,10 @@ namespace TemplateInterpreter
         Field,             // object field name
         LeftBracket,       // [
         RightBracket,      // ]
-        Include,           // #include
-        Literal,           // #literal
+        Include,           // include
+        Literal,           // literal
         EndLiteral,        // /literal
-        Capture,           // #capture
+        Capture,           // capture
         EndCapture,        // /capture
         CommentStart,      // *
         CommentEnd         // *
@@ -573,10 +573,10 @@ namespace TemplateInterpreter
 
             SkipWhitespace();
 
-            if (TryMatch("#literal"))
+            if (TryMatch("literal"))
             {
-                _tokens.Add(new Token(TokenType.Literal, "#literal", _position));
-                _position += 8;
+                _tokens.Add(new Token(TokenType.Literal, "literal", _position));
+                _position += 7;
 
                 SkipWhitespace();
 
@@ -620,9 +620,9 @@ namespace TemplateInterpreter
                             currentLookahead += 3 + WhitespaceCount();
                         }
 
-                        if (TryMatchAt("#literal", currentLookahead))
+                        if (TryMatchAt("literal", currentLookahead))
                         {
-                            currentLookahead += 8 + WhitespaceCount();
+                            currentLookahead += 7 + WhitespaceCount();
 
                             if (TryMatchAt("}}", currentLookahead))
                             {
@@ -796,16 +796,16 @@ namespace TemplateInterpreter
                 }
 
                 // Match keywords and operators
-                if (TryMatch("#let"))
+                if (TryMatch("let"))
                 {
-                    _tokens.Add(new Token(TokenType.Let, "#let", _position));
-                    _position += 4;
+                    _tokens.Add(new Token(TokenType.Let, "let", _position));
+                    _position += 3;
                     continue;
                 }
-                else if (TryMatch("#capture"))
+                else if (TryMatch("capture"))
                 {
-                    _tokens.Add(new Token(TokenType.Capture, "#capture", _position));
-                    _position += 8;
+                    _tokens.Add(new Token(TokenType.Capture, "capture", _position));
+                    _position += 7;
                     continue;
                 }
                 else if (TryMatch("/capture"))
@@ -814,31 +814,31 @@ namespace TemplateInterpreter
                     _position += 8;
                     continue;
                 }
-                else if (TryMatch("#for"))
+                else if (TryMatch("for"))
                 {
-                    _tokens.Add(new Token(TokenType.For, "#for", _position));
-                    _position += 4;
-                }
-                else if (TryMatch("#include"))
-                {
-                    _tokens.Add(new Token(TokenType.Include, "#include", _position));
-                    _position += 8;
-                    continue;
-                }
-                else if (TryMatch("#if"))
-                {
-                    _tokens.Add(new Token(TokenType.If, "#if", _position));
+                    _tokens.Add(new Token(TokenType.For, "for", _position));
                     _position += 3;
                 }
-                else if (TryMatch("#elseif"))
+                else if (TryMatch("include"))
                 {
-                    _tokens.Add(new Token(TokenType.ElseIf, "#elseif", _position));
+                    _tokens.Add(new Token(TokenType.Include, "include", _position));
                     _position += 7;
+                    continue;
                 }
-                else if (TryMatch("#else"))
+                else if (TryMatch("if"))
                 {
-                    _tokens.Add(new Token(TokenType.Else, "#else", _position));
-                    _position += 5;
+                    _tokens.Add(new Token(TokenType.If, "if", _position));
+                    _position += 2;
+                }
+                else if (TryMatch("elseif"))
+                {
+                    _tokens.Add(new Token(TokenType.ElseIf, "elseif", _position));
+                    _position += 6;
+                }
+                else if (TryMatch("else"))
+                {
+                    _tokens.Add(new Token(TokenType.Else, "else", _position));
+                    _position += 4;
                 }
                 else if (TryMatch("/for"))
                 {
@@ -1935,7 +1935,7 @@ namespace TemplateInterpreter
         private AstNode ParseLetStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #let
+            Advance(); // Skip let
 
             var variableName = Expect(TokenType.Variable).Value;
             Advance();
@@ -1954,7 +1954,7 @@ namespace TemplateInterpreter
         private AstNode ParseCaptureStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #capture
+            Advance(); // Skip capture
 
             var variableName = Expect(TokenType.Variable).Value;
             Advance();
@@ -1978,7 +1978,7 @@ namespace TemplateInterpreter
         private AstNode ParseLiteralStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #literal
+            Advance(); // Skip literal
 
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
@@ -2002,7 +2002,7 @@ namespace TemplateInterpreter
         private AstNode ParseIncludeStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #include
+            Advance(); // Skip include
 
             var templateName = Expect(TokenType.Variable).Value;
             Advance();
@@ -2217,7 +2217,7 @@ namespace TemplateInterpreter
 
             // Parse initial if
             Advance(); // Skip {{
-            Advance(); // Skip #if
+            Advance(); // Skip if
             var condition = ParseExpression();
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
@@ -2233,7 +2233,7 @@ namespace TemplateInterpreter
                 if (token.Type == TokenType.ElseIf)
                 {
                     Advance(); // Skip {{
-                    Advance(); // Skip #elseif
+                    Advance(); // Skip elseif
                     condition = ParseExpression();
                     Expect(TokenType.DirectiveEnd);
                     Advance(); // Skip }}
@@ -2243,7 +2243,7 @@ namespace TemplateInterpreter
                 else if (token.Type == TokenType.Else)
                 {
                     Advance(); // Skip {{
-                    Advance(); // Skip #else
+                    Advance(); // Skip else
                     Expect(TokenType.DirectiveEnd);
                     Advance(); // Skip }}
                     elseBranch = ParseTemplate();
@@ -2270,7 +2270,7 @@ namespace TemplateInterpreter
         private AstNode ParseForStatement()
         {
             Advance(); // Skip {{
-            Advance(); // Skip #for
+            Advance(); // Skip for
             var iteratorName = Expect(TokenType.Variable).Value;
             Advance();
 

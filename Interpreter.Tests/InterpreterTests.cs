@@ -68,14 +68,14 @@ namespace TemplateInterpreter.Tests
         {
             // Arrange
             var template = @"
-            {{#if var1 == ""test""}}
+            {{if var1 == ""test""}}
                 Outer if true
-                {{#if var2 * 2 >= 5}}
+                {{if var2 * 2 >= 5}}
                     Inner if also true
-                {{#else}}
+                {{else}}
                     Inner if false
                 {{/if}}
-            {{#else}}
+            {{else}}
                 Outer if false
             {{/if}}";
             var data = new ExpandoObject();
@@ -97,8 +97,8 @@ namespace TemplateInterpreter.Tests
             // Arrange
             var template = @"
             Users with high scores:
-            {{#for user in users}}
-                {{#if user.score > 80 && (user.age >= 18 || user.region == ""EU"")}}
+            {{for user in users}}
+                {{if user.score > 80 && (user.age >= 18 || user.region == ""EU"")}}
                     {{user.name}} ({{user.score}})
                 {{/if}}
             {{/for}}";
@@ -161,14 +161,14 @@ namespace TemplateInterpreter.Tests
         {
             // Arrange
             var template = @"
-            {{#for department in departments}}
+            {{for department in departments}}
             Department: {{department.name}}
-                {{#for employee in department.employees}}
-                    {{#if employee.salary > department.avgSalary && !employee.isTemp}}
+                {{for employee in department.employees}}
+                    {{if employee.salary > department.avgSalary && !employee.isTemp}}
                         {{employee.name}} (Senior)
-                    {{#elseif employee.salary > department.avgSalary * 0.8}}
+                    {{elseif employee.salary > department.avgSalary * 0.8}}
                         {{employee.name}} (Mid-level)
-                    {{#else}}
+                    {{else}}
                         {{employee.name}} (Junior)
                     {{/if}}
                 {{/for}}
@@ -295,7 +295,7 @@ namespace TemplateInterpreter.Tests
         public void LambdaFunction()
         {
             // Arrange
-            var template = @"{{#for user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name == ""Atlanta"")) > 0)}}{{user.age}}{{#for loc in user.loc}}{{loc.name}}{{/for}}{{/for}}";
+            var template = @"{{for user in filter(users, (x) => x.age > 17 && length(filter(x.loc, (x) => x.name == ""Atlanta"")) > 0)}}{{user.age}}{{for loc in user.loc}}{{loc.name}}{{/for}}{{/for}}";
             var data = new ExpandoObject();
             var users = new List<ExpandoObject>();
 
@@ -400,7 +400,7 @@ namespace TemplateInterpreter.Tests
         public void UriFunctions()
         {
             // Arrange
-            var template = @"{{ #let uri = uri(""https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName"") }}{{uri.AbsolutePath}}
+            var template = @"{{ let uri = uri(""https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName"") }}{{uri.AbsolutePath}}
 {{uri.AbsoluteUri}}
 {{uri.DnsSafeHost}}
 {{uri.Fragment}}
@@ -455,13 +455,13 @@ user:password", result);
             // Arrange
             var templates = new Dictionary<string, string>
             {
-                {"emptyArray", "{{#for x in []}}{{x}}, {{/for}}"},
-                {"numericArray", "{{#for x in [1.1, 2, 0.3]}}{{x}}, {{/for}}"},
-                {"stringArray", "{{#for x in [\"hello world\", \"foo bar\"]}}{{x}}, {{/for}}"},
-                {"objectArray", "{{#for x in [obj(name: \"Jeff\"), obj(name: \"Jim\")]}}{{x.name}}, {{/for}}"},
-                {"mixedArray", "{{#for x in [\"foo\", 2, \"bar\", false, obj(x: 1, y: 2)]}}{{x}}, {{/for}}"},
-                {"nestedArray", "{{#for x in [1, [2, 3], 4]}}{{x}}, {{/for}}"},
-                {"objectPropertyArray", "{{#for x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/for}}"}
+                {"emptyArray", "{{for x in []}}{{x}}, {{/for}}"},
+                {"numericArray", "{{for x in [1.1, 2, 0.3]}}{{x}}, {{/for}}"},
+                {"stringArray", "{{for x in [\"hello world\", \"foo bar\"]}}{{x}}, {{/for}}"},
+                {"objectArray", "{{for x in [obj(name: \"Jeff\"), obj(name: \"Jim\")]}}{{x.name}}, {{/for}}"},
+                {"mixedArray", "{{for x in [\"foo\", 2, \"bar\", false, obj(x: 1, y: 2)]}}{{x}}, {{/for}}"},
+                {"nestedArray", "{{for x in [1, [2, 3], 4]}}{{x}}, {{/for}}"},
+                {"objectPropertyArray", "{{for x in obj(arr: [1, 2, 3]).arr}}{{x}}, {{/for}}"}
             };
 
             // Act & Assert
@@ -509,20 +509,20 @@ user:password", result);
             Assert.That(_interpreter.Interpret("{{any([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("True"));
             Assert.That(_interpreter.Interpret("{{any([])}}", new ExpandoObject()), Is.EqualTo("False"));
             Assert.That(_interpreter.Interpret("{{join([3.4, false, \"foo\"], \" | \")}}", new ExpandoObject()), Is.EqualTo("3.4 | False | foo"));
-            Assert.That(_interpreter.Interpret("{{#for x in explode(\"a,b,c\", \",\")}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("a b c "));
-            Assert.That(_interpreter.Interpret("{{#for x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 6 "));
+            Assert.That(_interpreter.Interpret("{{for x in explode(\"a,b,c\", \",\")}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("a b c "));
+            Assert.That(_interpreter.Interpret("{{for x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 6 "));
             Assert.That(_interpreter.Interpret("{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}}", new ExpandoObject()), Is.EqualTo("10"));
-            Assert.That(_interpreter.Interpret("{{#for x in take([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("foo bar "));
-            Assert.That(_interpreter.Interpret("{{#for x in skip([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("baz "));
+            Assert.That(_interpreter.Interpret("{{for x in take([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("foo bar "));
+            Assert.That(_interpreter.Interpret("{{for x in skip([\"foo\", \"bar\", \"baz\"], 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("baz "));
         }
 
         [Test]
         public void OrderingOperations()
         {
             // Arrange & Act & Assert
-            Assert.That(_interpreter.Interpret("{{#for x in order([4, 7, 2])}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 7 "));
-            Assert.That(_interpreter.Interpret("{{#for x in order([4, 7, 2], false)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("7 4 2 "));
-            Assert.That(_interpreter.Interpret("{{#for x in order([\"aaaa\", \"zz\", \"yyy\"], ((a, b) => length(a) - length(b)))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("zz yyy aaaa "));
+            Assert.That(_interpreter.Interpret("{{for x in order([4, 7, 2])}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 7 "));
+            Assert.That(_interpreter.Interpret("{{for x in order([4, 7, 2], false)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("7 4 2 "));
+            Assert.That(_interpreter.Interpret("{{for x in order([\"aaaa\", \"zz\", \"yyy\"], ((a, b) => length(a) - length(b)))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("zz yyy aaaa "));
         }
 
         [Test]
@@ -530,9 +530,9 @@ user:password", result);
         {
             // Arrange & Act & Assert
             Assert.That(_interpreter.Interpret("{{get(obj(name: \"gordon\", age: 22), \"name\")}}", new ExpandoObject()), Is.EqualTo("gordon"));
-            Assert.That(_interpreter.Interpret("{{#for x in keys(obj(name: \"John\", age: 30, city: \"Atlanta\"))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("name age city "));
+            Assert.That(_interpreter.Interpret("{{for x in keys(obj(name: \"John\", age: 30, city: \"Atlanta\"))}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("name age city "));
 
-            var groupTemplate = "{{#for key in keys(group([" +
+            var groupTemplate = "{{for key in keys(group([" +
                 "obj(city: \"Atlanta\", name: \"Jeff\", age: 10), " +
                 "obj(city: \"Atlanta\", name: \"Jim\", age: 44), " +
                 "obj(city: \"Denver\", name: \"Cindy\", age: 23)], " +
@@ -595,7 +595,7 @@ user:password", result);
 
             var interpreter = new Interpreter(registry);
 
-            var template = "{{#include header}}<main>{{content}}</main>{{#include footer}}";
+            var template = "{{include header}}<main>{{content}}</main>{{include footer}}";
 
             var data = new ExpandoObject();
             ((IDictionary<string, object>)data).Add("title", "My Page");
@@ -620,13 +620,13 @@ user:password", result);
             registry.RegisterTemplate("outer", @"
 <div>
     <h1>{{title}}</h1>
-    {{#include inner}}
+    {{include inner}}
 </div>");
 
             registry.RegisterTemplate("inner", @"
 <section>
     {{message}}
-    {{#include footer}}
+    {{include footer}}
 </section>");
 
             registry.RegisterTemplate("footer", @"
@@ -640,7 +640,7 @@ user:password", result);
             data.message = "Hello World";
             data.copyright = "© 2025";
 
-            var template = "{{#include outer}}";
+            var template = "{{include outer}}";
 
             // Act
             var result = interpreter.Interpret(template, data);
@@ -671,8 +671,8 @@ user:password", result);
             // Register templates
             registry.RegisterTemplate("list", @"
 <ul>
-    {{#for item in items}}
-        {{#include listitem}}
+    {{for item in items}}
+        {{include listitem}}
     {{/for}}
 </ul>");
 
@@ -698,7 +698,7 @@ user:password", result);
             dynamic data = new ExpandoObject();
             data.items = items;
 
-            var template = "{{#include list}}";
+            var template = "{{include list}}";
 
             // Act
             var result = interpreter.Interpret(template, data);
@@ -729,10 +729,10 @@ user:password", result);
             registry.RegisterTemplate("profile", @"
 <div class=""profile"">
     <h2>{{username}}</h2>
-    {{#if premium}}
-        {{#include premiumcontent}}
-    {{#else}}
-        {{#include basiccontent}}
+    {{if premium}}
+        {{include premiumcontent}}
+    {{else}}
+        {{include basiccontent}}
     {{/if}}
 </div>");
 
@@ -758,10 +758,10 @@ user:password", result);
             basicUser.premium = false;
 
             // Test with premium user
-            var premiumResult = interpreter.Interpret("{{#include profile}}", premiumUser);
+            var premiumResult = interpreter.Interpret("{{include profile}}", premiumUser);
 
             // Test with basic user
-            var basicResult = interpreter.Interpret("{{#include profile}}", basicUser);
+            var basicResult = interpreter.Interpret("{{include profile}}", basicUser);
 
             // Assert premium user result
             StringAssert.Contains("<h2>JohnDoe</h2>", premiumResult);
@@ -786,7 +786,7 @@ user:password", result);
         public void BasicVariableAssignment()
         {
             // Template that assigns a value and then outputs it
-            var template = "{{#let x = 2}}{{x}}";
+            var template = "{{let x = 2}}{{x}}";
 
             // Create empty data context
             dynamic data = new ExpandoObject();
@@ -799,7 +799,7 @@ user:password", result);
         public void VariableExpressionAssignment()
         {
             // Template that uses a variable in an expression to assign to another variable
-            var template = "{{#let x = 2}}{{#let y = x + 12}}{{y}}";
+            var template = "{{let x = 2}}{{let y = x + 12}}{{y}}";
 
             dynamic data = new ExpandoObject();
 
@@ -812,10 +812,10 @@ user:password", result);
         {
             // Template that defines a lambda function, assigns variables, and uses them
             var template = @"
-                {{#let f = (a, b) => a * b}}
-                {{#let x = 2}}
-                {{#let y = 14}}
-                {{#let z = f(x, y)}}
+                {{let f = (a, b) => a * b}}
+                {{let x = 2}}
+                {{let y = 14}}
+                {{let z = f(x, y)}}
                 {{z}}";
 
             dynamic data = new ExpandoObject();
@@ -827,7 +827,7 @@ user:password", result);
         [Test]
         public void VariableRedefinitionThrowsException()
         {
-            var template = "{{#let x = 2}}{{#let x = 3}}";
+            var template = "{{let x = 2}}{{let x = 3}}";
             dynamic data = new ExpandoObject();
 
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
@@ -837,7 +837,7 @@ user:password", result);
         [Test]
         public void VariableConflictWithDataContextThrowsException()
         {
-            var template = "{{#let existingField = 2}}";
+            var template = "{{let existingField = 2}}";
 
             dynamic data = new ExpandoObject();
             var dict = (IDictionary<string, object>)data;
@@ -851,8 +851,8 @@ user:password", result);
         public void VariableConflictWithIteratorThrowsException()
         {
             var template = @"
-                {{#for item in [1,2,3]}}
-                    {{#let item = 2}}
+                {{for item in [1,2,3]}}
+                    {{let item = 2}}
                 {{/for}}";
 
             dynamic data = new ExpandoObject();
@@ -864,7 +864,7 @@ user:password", result);
         [Test]
         public void VariableScopeInNestedStructures()
         {
-            var template = @"{{#let x = 1}}{{#for item in [1,2]}}{{#let y = x + item}}{{y}}{{/for}}";
+            var template = @"{{let x = 1}}{{for item in [1,2]}}{{let y = x + item}}{{y}}{{/for}}";
 
             dynamic data = new ExpandoObject();
 
@@ -876,9 +876,9 @@ user:password", result);
         public void ComplexExpressionAssignment()
         {
             var template = @"
-                {{#let x = 10}}
-                {{#let y = 5}}
-                {{#let z = (x * y) + (x / y)}}
+                {{let x = 10}}
+                {{let y = 5}}
+                {{let z = (x * y) + (x / y)}}
                 {{z}}";
 
             dynamic data = new ExpandoObject();
@@ -891,7 +891,7 @@ user:password", result);
         public void LambdaAccessToVariables()
         {
             // Template that defines a variable and then uses it within a lambda
-            var template = @"{{#let x = 2}}{{((a) => a * x)(3)}}";
+            var template = @"{{let x = 2}}{{((a) => a * x)(3)}}";
 
             dynamic data = new ExpandoObject();
 
@@ -903,7 +903,7 @@ user:password", result);
         public void LambdaClosures()
         {
             // Template that defines a variable and then uses it within a lambda
-            var template = @"{{#let x = 2}}{{#let f = ((a) => (() => a * x))}}{{f(3)()}}";
+            var template = @"{{let x = 2}}{{let f = ((a) => (() => a * x))}}{{f(3)()}}";
 
             dynamic data = new ExpandoObject();
 
@@ -916,8 +916,8 @@ user:password", result);
         {
             // Test case 1: Iterator conflicts with existing variable
             var template1 = @"
-            {{#let item = 5}}
-            {{#for item in [1,2,3]}}
+            {{let item = 5}}
+            {{for item in [1,2,3]}}
                 {{item}}
             {{/for}}";
 
@@ -928,8 +928,8 @@ user:password", result);
 
             // Test case 2: Variable conflicts with existing iterator
             var template2 = @"
-            {{#for item in [1,2,3]}}
-                {{#let item = 5}}
+            {{for item in [1,2,3]}}
+                {{let item = 5}}
                 {{item}}
             {{/for}}";
 
@@ -937,7 +937,7 @@ user:password", result);
                 "Should throw exception when variable name conflicts with existing iterator");
 
             // Test case 3: Verify proper nested loops with different iterator names work
-            var template3 = @"{{#for i in [1,2]}}{{#for j in [3,4]}}{{i * j}}{{/for}}{{/for}}";
+            var template3 = @"{{for i in [1,2]}}{{for j in [3,4]}}{{i * j}}{{/for}}{{/for}}";
 
             var result = _interpreter.Interpret(template3, data).Trim();
             Assert.That(result, Is.EqualTo("3468")); // Should output: 3,4,6,8
@@ -1143,7 +1143,7 @@ user:password", result);
         public void StringQuotes_CanBeEscaped()
         {
             // Arrange
-            var template = "{{#let x = \"\\\"hello world\\\"\"}}{{x}}";
+            var template = "{{let x = \"\\\"hello world\\\"\"}}{{x}}";
 
             // Act
             dynamic data = new ExpandoObject();
@@ -1270,7 +1270,7 @@ user:password", result);
         [Test]
         public void Literal_BasicDirective_ShouldReturnExactContent()
         {
-            var template = "{{#literal}}Hello World{{/literal}}";
+            var template = "{{literal}}Hello World{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("Hello World"));
         }
@@ -1278,18 +1278,18 @@ user:password", result);
         [Test]
         public void Literal_WithTemplateDirectives_ShouldReturnUnprocessedContent()
         {
-            var template = "{{#literal}}{{#if x}}True{{#else}}False{{/if}}{{/literal}}";
+            var template = "{{literal}}{{if x}}True{{else}}False{{/if}}{{/literal}}";
             dynamic data = new ExpandoObject();
             data.x = true;
 
             var result = _interpreter.Interpret(template, data);
-            Assert.That(result, Is.EqualTo("{{#if x}}True{{#else}}False{{/if}}"));
+            Assert.That(result, Is.EqualTo("{{if x}}True{{else}}False{{/if}}"));
         }
 
         [Test]
         public void Literal_WithVariables_ShouldReturnUnprocessedVariables()
         {
-            var template = "{{#literal}}{{name}} is {{age}} years old{{/literal}}";
+            var template = "{{literal}}{{name}} is {{age}} years old{{/literal}}";
             dynamic data = new ExpandoObject();
             data.name = "John";
             data.age = 30;
@@ -1301,7 +1301,7 @@ user:password", result);
         [Test]
         public void Literal_WithMixedContent_ShouldProcessOutsideAndPreserveInside()
         {
-            var template = "Name: {{name}} {{#literal}}Age: {{age}}{{/literal}} Location: {{location}}";
+            var template = "Name: {{name}} {{literal}}Age: {{age}}{{/literal}} Location: {{location}}";
             dynamic data = new ExpandoObject();
             data.name = "John";
             data.age = 30;
@@ -1314,15 +1314,15 @@ user:password", result);
         [Test]
         public void Literal_WithNestedDirectives_ShouldPreserveAllContent()
         {
-            var template = "{{#literal}}{{#for item in items}}{{item.name}}{{#if item.active}}Active{{/if}}{{/for}}{{/literal}}";
+            var template = "{{literal}}{{for item in items}}{{item.name}}{{if item.active}}Active{{/if}}{{/for}}{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            Assert.That(result, Is.EqualTo("{{#for item in items}}{{item.name}}{{#if item.active}}Active{{/if}}{{/for}}"));
+            Assert.That(result, Is.EqualTo("{{for item in items}}{{item.name}}{{if item.active}}Active{{/if}}{{/for}}"));
         }
 
         [Test]
         public void Literal_WithSpecialCharacters_ShouldPreserveFormatting()
         {
-            var template = "{{#literal}}Line 1\nLine 2\tTabbed{{/literal}}";
+            var template = "{{literal}}Line 1\nLine 2\tTabbed{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("Line 1\nLine 2\tTabbed"));
         }
@@ -1330,7 +1330,7 @@ user:password", result);
         [Test]
         public void Literal_Empty_ShouldReturnEmptyString()
         {
-            var template = "{{#literal}}{{/literal}}";
+            var template = "{{literal}}{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo(""));
         }
@@ -1338,7 +1338,7 @@ user:password", result);
         [Test]
         public void Literal_WithExpressions_ShouldPreserveExpressions()
         {
-            var template = "{{#literal}}{{x + y * z}}{{/literal}}";
+            var template = "{{literal}}{{x + y * z}}{{/literal}}";
             dynamic data = new ExpandoObject();
             data.x = 1;
             data.y = 2;
@@ -1351,7 +1351,7 @@ user:password", result);
         [Test]
         public void Literal_WithMultipleDirectives_ShouldProcessCorrectly()
         {
-            var template = "{{#literal}}First{{/literal}} Middle {{#literal}}Last{{/literal}}";
+            var template = "{{literal}}First{{/literal}} Middle {{literal}}Last{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("First Middle Last"));
         }
@@ -1359,15 +1359,15 @@ user:password", result);
         [Test]
         public void Literal_WithNestedLiterals_ShouldHandleNestingCorrectly()
         {
-            var template = "{{#literal}}Outer {{#literal}}Inner{{/literal}} Content{{/literal}}";
+            var template = "{{literal}}Outer {{literal}}Inner{{/literal}} Content{{/literal}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            Assert.That(result, Is.EqualTo("Outer {{#literal}}Inner{{/literal}} Content"));
+            Assert.That(result, Is.EqualTo("Outer {{literal}}Inner{{/literal}} Content"));
         }
 
         [Test]
         public void Literal_UnterminatedDirective_ShouldThrowException()
         {
-            var template = "{{#literal}}Unterminated content";
+            var template = "{{literal}}Unterminated content";
             Assert.Throws<System.Exception>(() => 
                 _interpreter.Interpret(template, new ExpandoObject())
             );
@@ -1376,7 +1376,7 @@ user:password", result);
         [Test]
         public void Literal_MismatchedDirectives_ShouldThrowException()
         {
-            var template = "{{#literal}}{{/if}}";
+            var template = "{{literal}}{{/if}}";
             Assert.Throws<System.Exception>(() => 
                 _interpreter.Interpret(template, new ExpandoObject())
             );
@@ -1385,7 +1385,7 @@ user:password", result);
         [Test]
         public void Literal_WithFunctionCalls_ShouldPreserveFunctionCalls()
         {
-            var template = "{{#literal}}{{length(items)}} {{uppercase(name)}}{{/literal}}";
+            var template = "{{literal}}{{length(items)}} {{uppercase(name)}}{{/literal}}";
             dynamic data = new ExpandoObject();
             data.items = new[] { 1, 2, 3 };
             data.name = "john";
@@ -1397,7 +1397,7 @@ user:password", result);
         [Test]
         public void Literal_WithMultipleLines_ShouldPreserveLineBreaks()
         {
-            var template = @"{{#literal}}
+            var template = @"{{literal}}
 Line 1
 Line 2
 Line 3
@@ -1410,7 +1410,7 @@ Line 3
         public void BasicCapture_SimpleText_CapturesCorrectly()
         {
             // Arrange
-            var template = "{{#capture x}}Hello World{{/capture}}Captured: {{x}}";
+            var template = "{{capture x}}Hello World{{/capture}}Captured: {{x}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1424,7 +1424,7 @@ Line 3
         public void Capture_WithExpression_CapturesEvaluatedResult()
         {
             // Arrange
-            var template = "{{#capture x}}{{2 + 3}}{{/capture}}Result: {{x}}";
+            var template = "{{capture x}}{{2 + 3}}{{/capture}}Result: {{x}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1438,7 +1438,7 @@ Line 3
         public void Capture_WithForLoop_CapturesIterationResults()
         {
             // Arrange
-            var template = "{{#capture x}}{{#for i in [1, 2, 3]}}{{i}},{{/for}}{{/capture}}Numbers: {{x}}";
+            var template = "{{capture x}}{{for i in [1, 2, 3]}}{{i}},{{/for}}{{/capture}}Numbers: {{x}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1452,7 +1452,7 @@ Line 3
         public void NestedCaptures_CaptureCorrectly()
         {
             // Arrange
-            var template = @"{{#capture outer}}{{#capture inner}}nested content{{/capture}}Outer with {{inner}}{{/capture}}Result: {{outer}}";
+            var template = @"{{capture outer}}{{capture inner}}nested content{{/capture}}Outer with {{inner}}{{/capture}}Result: {{outer}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1466,7 +1466,7 @@ Line 3
         public void Capture_WithConditional_CapturesCorrectBranch()
         {
             // Arrange
-            var template = @"{{#capture result}}{{#if true}}true branch{{#else}}false branch{{/if}}{{/capture}}Got: {{result}}";
+            var template = @"{{capture result}}{{if true}}true branch{{else}}false branch{{/if}}{{/capture}}Got: {{result}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1480,7 +1480,7 @@ Line 3
         public void Capture_WithData_CanAccessContextData()
         {
             // Arrange
-            var template = "{{#capture x}}Name: {{user.name}}{{/capture}}Captured: {{x}}";
+            var template = "{{capture x}}Name: {{user.name}}{{/capture}}Captured: {{x}}";
             dynamic data = new ExpandoObject();
             ((IDictionary<string, object>)data).Add("user", new { name = "John" });
 
@@ -1496,8 +1496,8 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{#capture x}}first{{/capture}}
-                {{#capture x}}second{{/capture}}
+                {{capture x}}first{{/capture}}
+                {{capture x}}second{{/capture}}
                 Value: {{x}}";
             dynamic data = new ExpandoObject();
 
@@ -1509,7 +1509,7 @@ Line 3
         public void Capture_WithWhitespace_PreservesWhitespace()
         {
             // Arrange
-            var template = "{{#capture x}}  spaced  content  {{/capture}}[{{x}}]";
+            var template = "{{capture x}}  spaced  content  {{/capture}}[{{x}}]";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1523,7 +1523,7 @@ Line 3
         public void Capture_EmptyContent_CapturesEmptyString()
         {
             // Arrange
-            var template = "{{#capture x}}{{/capture}}Empty:[{{x}}]";
+            var template = "{{capture x}}{{/capture}}Empty:[{{x}}]";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1537,7 +1537,7 @@ Line 3
         public void MissingEndCapture_ThrowsException()
         {
             // Arrange
-            var template = "{{#capture x}}unclosed";
+            var template = "{{capture x}}unclosed";
             dynamic data = new ExpandoObject();
 
             // Act & Assert
@@ -1548,7 +1548,7 @@ Line 3
         public void Capture_WithoutVariableName_ThrowsException()
         {
             // Arrange
-            var template = "{{#capture}}content{{/capture}}";
+            var template = "{{capture}}content{{/capture}}";
             dynamic data = new ExpandoObject();
 
             // Act & Assert
@@ -1570,7 +1570,7 @@ Line 3
         public void Capture_VariableScope_RespectsScopingRules()
         {
             // Arrange
-            var template = @"{{#capture outer}}{{#for i in [1]}}{{#capture inner}}Inner Content{{/capture}}In loop: {{inner}}{{/for}}{{/capture}}After loop: {{outer}}";
+            var template = @"{{capture outer}}{{for i in [1]}}{{capture inner}}Inner Content{{/capture}}In loop: {{inner}}{{/for}}{{/capture}}After loop: {{outer}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1589,7 +1589,7 @@ Line 3
                 new List<ParameterDefinition> { new ParameterDefinition(typeof(string)) },
                 args => $"Hello, {args[0]}!");
 
-            var template = "{{#capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
+            var template = "{{capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
             dynamic data = new ExpandoObject();
 
             // Act
@@ -1604,7 +1604,7 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let person = fromJson(""{\""name\"":\""John\"",\""age\"":30}"") }}
+                {{ let person = fromJson(""{\""name\"":\""John\"",\""age\"":30}"") }}
                 {{ person.name }},{{ person.age }}";
 
             // Act
@@ -1619,7 +1619,7 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let data = fromJson(""{
+                {{ let data = fromJson(""{
                     \""person\"": {
                         \""name\"": \""John\"",
                         \""address\"": {
@@ -1642,8 +1642,8 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let numbers = fromJson(""[1, 2, 3, 4, 5]"") }}
-                {{ #for num in numbers }}{{ num }}{{ #if num != 5 }},{{ /if }}{{ /for }}";
+                {{ let numbers = fromJson(""[1, 2, 3, 4, 5]"") }}
+                {{ for num in numbers }}{{ num }}{{ if num != 5 }},{{ /if }}{{ /for }}";
 
             // Act
             var result = _interpreter.Interpret(template, new { });
@@ -1657,16 +1657,16 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let person = fromJson(""{
+                {{ let person = fromJson(""{
                     \""name\"": \""John\"",
                     \""email\"": null,
                     \""age\"": 30,
                     \""address\"": null
                 }"") }}
-{{ #if contains(person, ""name"") }}has_name{{ /if }}
-{{ #if contains(person, ""age"") }}has_age{{ /if }}
-{{ #if contains(person, ""email"") }}has_email{{ /if }}
-{{ #if contains(person, ""address"") }}has_address{{ /if }}";
+{{ if contains(person, ""name"") }}has_name{{ /if }}
+{{ if contains(person, ""age"") }}has_age{{ /if }}
+{{ if contains(person, ""email"") }}has_email{{ /if }}
+{{ if contains(person, ""address"") }}has_address{{ /if }}";
 
             // Act
             var result = _interpreter.Interpret(template, new { });
@@ -1680,8 +1680,8 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let numbers = fromJson(""[1, null, 2, null, 3]"") }}
-                {{ length(numbers) }},{{ #for num in numbers }}{{ num }}{{ #if num != 3 }},{{ /if }}{{ /for }}";
+                {{ let numbers = fromJson(""[1, null, 2, null, 3]"") }}
+                {{ length(numbers) }},{{ for num in numbers }}{{ num }}{{ if num != 3 }},{{ /if }}{{ /for }}";
 
             // Act
             var result = _interpreter.Interpret(template, new { });
@@ -1695,11 +1695,11 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let people = fromJson(""[
+                {{ let people = fromJson(""[
                     {\""name\"": \""John\"", \""age\"": 30},
                     {\""name\"": \""Jane\"", \""age\"": 25}
                 ]"") }}
-                {{ #for person in people }}{{ person.name }}:{{ person.age }}{{ #if person != last(people) }},{{ /if }}{{ /for }}";
+                {{ for person in people }}{{ person.name }}:{{ person.age }}{{ if person != last(people) }},{{ /if }}{{ /for }}";
 
             // Act
             var result = _interpreter.Interpret(template, new { });
@@ -1713,12 +1713,12 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let flags = fromJson(""{
+                {{ let flags = fromJson(""{
                     \""isActive\"": true,
                     \""isDeleted\"": false
                 }"") }}
-                {{ #if flags.isActive }}active{{ /if }}
-                {{ #if flags.isDeleted }}deleted{{ /if }}";
+                {{ if flags.isActive }}active{{ /if }}
+                {{ if flags.isDeleted }}deleted{{ /if }}";
 
             // Act
             var result = _interpreter.Interpret(template, new { });
@@ -1732,7 +1732,7 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let data = fromJson(""{
+                {{ let data = fromJson(""{
                     \""price\"": 10.5,
                     \""quantity\"": 3,
                     \""discount\"": 2.5
@@ -1751,7 +1751,7 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let obj = fromJson(""{}"") }}
+                {{ let obj = fromJson(""{}"") }}
                 {{ length(keys(obj)) }}";
 
             // Act
@@ -1766,7 +1766,7 @@ Line 3
         {
             // Arrange
             var template = @"
-                {{ #let arr = fromJson(""[]"") }}
+                {{ let arr = fromJson(""[]"") }}
                 {{ length(arr) }}";
 
             // Act
@@ -2064,7 +2064,7 @@ Line 3
                 .Returns(entityCollection);
 
             // Act
-            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ #for account in accounts }}{{ account.name }}|{{ /for }}";
+            var template = "{{ let accounts = fetch(\"" + fetchXml + "\") }}{{ for account in accounts }}{{ account.name }}|{{ /for }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
 
             // Assert
@@ -2092,7 +2092,7 @@ Line 3
                 .Returns(entityCollection);
 
             // Act
-            var template = "{{ #let contact = first(fetch(\"" + fetchXml + "\")) }}{{ #if contains(contact, \"firstname\") }}{{ contact.firstname }}{{ /if }}{{ #if contains(contact, \"lastname\") }}{{ contact.lastname }}{{ /if }}";
+            var template = "{{ let contact = first(fetch(\"" + fetchXml + "\")) }}{{ if contains(contact, \"firstname\") }}{{ contact.firstname }}{{ /if }}{{ if contains(contact, \"lastname\") }}{{ contact.lastname }}{{ /if }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
 
             // Assert
@@ -2121,7 +2121,7 @@ Line 3
                 .Returns(entityCollection);
 
             // Act
-            var template = @"{{ #let accounts = fetch(""" + fetchXml + @""") }}
+            var template = @"{{ let accounts = fetch(""" + fetchXml + @""") }}
                            Contact: {{ first(accounts).primarycontactid }}
                            Category: {{ first(accounts).accountcategorycode }}
                            Revenue: {{ first(accounts).revenue }}";
@@ -2152,7 +2152,7 @@ Line 3
                 .Returns(entityCollection);
 
             // Act
-            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ first(accounts).contact_name }}";
+            var template = "{{ let accounts = fetch(\"" + fetchXml + "\") }}{{ first(accounts).contact_name }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
 
             // Assert
@@ -2178,7 +2178,7 @@ Line 3
                 .Returns(entityCollection);
 
             // Act
-            var template = "{{ #let accounts = fetch(\"" + fetchXml + "\") }}{{ get(first(accounts), \"contact.name\") }}";
+            var template = "{{ let accounts = fetch(\"" + fetchXml + "\") }}{{ get(first(accounts), \"contact.name\") }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
 
             // Assert
@@ -2475,7 +2475,7 @@ Line 3
         public void ConditionalWithNestedContent()
         {
             // Arrange
-            var input = "{{#let x = 4}}{{#if x == 4}}{{x}} {{#for y in [1, 2, 3]}}{{y}} {{/for}}{{#else}}{{x}}foo{{/if}}hello world";
+            var input = "{{let x = 4}}{{if x == 4}}{{x}} {{for y in [1, 2, 3]}}{{y}} {{/for}}{{else}}{{x}}foo{{/if}}hello world";
 
             // Act
             var result = _interpreter.Interpret(input, new ExpandoObject());
@@ -2584,7 +2584,7 @@ Line 3
         [Test]
         public void IfStatement_HandlesTrimmingCorrectly()
         {
-            var template = "Start\n  {{- #if true -}}\n    Content\n  {{- /if -}}  \nEnd";
+            var template = "Start\n  {{- if true -}}\n    Content\n  {{- /if -}}  \nEnd";
             
             var result = _interpreter.Interpret(template, new ExpandoObject());
             
@@ -2594,7 +2594,7 @@ Line 3
         [Test]
         public void ForLoop_HandlesTrimmingCorrectly()
         {
-            var template = "Start\n  {{- #for item in items -}}\n    {{ item -}}  \n  {{- /for -}}  \nEnd";
+            var template = "Start\n  {{- for item in items -}}\n    {{ item -}}  \n  {{- /for -}}  \nEnd";
             dynamic data = new ExpandoObject();
             data.items = new List<decimal>() { 1, 2, 3 };
             
@@ -2617,7 +2617,7 @@ Line 3
         public void MixedContent_HandlesTrimmingCorrectly()
         {
             var template = @"Hello
-  {{- #if true -}}
+  {{- if true -}}
     {{ name -}}
   {{- /if -}}
 World";
@@ -2657,8 +2657,8 @@ World";
         public void ComplexNesting_HandlesTrimmingCorrectly()
         {
             var template = @"Start
-  {{- #if true -}}
-    {{- #for item in items -}}
+  {{- if true -}}
+    {{- for item in items -}}
       {{ item -}}
     {{- /for -}}
   {{- /if -}}
@@ -2675,7 +2675,7 @@ End";
         public void ObjectFunctionCreation()
         {
             // Arrange & Act
-            var result1 = _interpreter.Interpret("{{#let o = obj(fn: (a) => a * 5, n: 5)}}{{o.fn(o.n)}}", new ExpandoObject());
+            var result1 = _interpreter.Interpret("{{let o = obj(fn: (a) => a * 5, n: 5)}}{{o.fn(o.n)}}", new ExpandoObject());
 
             // Assert
             Assert.That(result1, Is.EqualTo("25"));
@@ -2685,7 +2685,7 @@ End";
         public void ArrayFunctionCreation()
         {
             // Arrange & Act
-            var result1 = _interpreter.Interpret("{{#let fns = [(a) => a * 2, (a) => a * 5]}}{{#for fn in fns}}{{fn(5)}} {{/for}}", new ExpandoObject());
+            var result1 = _interpreter.Interpret("{{let fns = [(a) => a * 2, (a) => a * 5]}}{{for fn in fns}}{{fn(5)}} {{/for}}", new ExpandoObject());
 
             // Assert
             Assert.That(result1, Is.EqualTo("10 25 "));
@@ -2694,7 +2694,7 @@ End";
         [Test]
         public void ObjectPropertyNameDefinedMultipleTimes()
         {
-            var template = "{{#let x = obj(a: 1, a: 2)}}{{x.a}}";
+            var template = "{{let x = obj(a: 1, a: 2)}}{{x.a}}";
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Duplicate field name 'a' defined at position 21");
         }
@@ -2719,7 +2719,7 @@ End";
         public void MultipleStatements_WithWhitespaceAndNewlines_Works()
         {
             var template = @"{{ 
-                #let fn = (n) =>
+                let fn = (n) =>
                     count = length(n),
                     squared = count * count,
                     squared + 1
@@ -2739,7 +2739,7 @@ End";
         [Test]
         public void ExternalVariableConflict_ThrowsException()
         {
-            var template = "{{ #let x = 2 }}{{ (() => x = 3, x)() }}";
+            var template = "{{ let x = 2 }}{{ (() => x = 3, x)() }}";
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
@@ -2747,7 +2747,7 @@ End";
         [Test]
         public void IteratorConflict_ThrowsException()
         {
-            var template = "{{ #for x in [1,2,3] }}{{ (() => x = 3, x)() }}{{ /for }}";
+            var template = "{{ for x in [1,2,3] }}{{ (() => x = 3, x)() }}{{ /for }}";
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
@@ -2783,7 +2783,7 @@ End";
         public void NestedLambdas_WithStatements_Works()
         {
             var template = @"{{ 
-                #let fn = (x) => 
+                let fn = (x) => 
                     mult = x * 2,
                     (y) => 
                         sum = mult + y,
@@ -2820,7 +2820,7 @@ End";
         [Test]
         public void ComplexExpressionInStatements_Works()
         {
-            var template = @"{{ #let fn =
+            var template = @"{{ let fn =
                 (arr) => 
                     filtered = filter(arr, (x) => x > 2),
                     sum = reduce(filtered, (acc, x) => acc + x, 0),
@@ -2841,7 +2841,7 @@ End";
         [Test]
         public void ClosureCapturesVariablesAndParams()
         {
-            var template = "{{ #let x = ((v) => a = 5, (b) => b * a * v)(5) }}{{ x(5) }}";
+            var template = "{{ let x = ((v) => a = 5, (b) => b * a * v)(5) }}{{ x(5) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("125"));
         }
@@ -2850,7 +2850,7 @@ End";
         public void Concat_ListAndString_ReturnsNewListWithItem()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<string> { "a", "b", "c" };
             data.item = "d";
@@ -2866,7 +2866,7 @@ End";
         public void Concat_ListAndNumber_ReturnsNewListWithItem()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<string> { "a", "b", "c" };
             data.item = 1;
@@ -2882,7 +2882,7 @@ End";
         public void Concat_ListAndBool_ReturnsNewListWithItem()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<string> { "a", "b", "c" };
             data.item = true;
@@ -2898,7 +2898,7 @@ End";
         public void Concat_ListAndList_ReturnsNewCombinedList()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list1, list2) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list1, list2) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list1 = new List<string> { "a", "b" };
             data.list2 = new List<string> { "c", "d" };
@@ -2914,7 +2914,7 @@ End";
         public void Concat_EmptyListAndItem_ReturnsNewListWithOnlyItem()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<string>();
             data.item = "a";
@@ -2930,7 +2930,7 @@ End";
         public void Concat_EmptyLists_ReturnsEmptyString()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list1, list2) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list1, list2) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list1 = new List<string>();
             data.list2 = new List<string>();
@@ -2946,7 +2946,7 @@ End";
         public void Concat_MixedTypes_HandlesHeterogeneousData()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<object> { "a", 1, true };
             data.item = 2.5;
@@ -2962,7 +2962,7 @@ End";
         public void Concat_ArrayAndList_ConcatenatesCorrectly()
         {
             // Arrange
-            var template = @"{{ #let result = concat(array, list) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(array, list) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.array = new[] { 1, 2, 3 };
             data.list = new List<int> { 4, 5, 6 };
@@ -2978,7 +2978,7 @@ End";
         public void Concat_ListLength_ValidatesResultLength()
         {
             // Arrange
-            var template = @"{{ #let result = concat(list1, list2) }}{{ length(result) }}";
+            var template = @"{{ let result = concat(list1, list2) }}{{ length(result) }}";
             dynamic data = new ExpandoObject();
             data.list1 = new List<string> { "a", "b" };
             data.list2 = new List<string> { "c", "d" };
