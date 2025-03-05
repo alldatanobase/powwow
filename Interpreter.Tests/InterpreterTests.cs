@@ -1158,7 +1158,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello 'World'\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello 'World'"));
         }
@@ -1168,7 +1168,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello \\\"World\\\"\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello \"World\""));
         }
@@ -1178,7 +1178,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello \\\\World\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello \\World"));
         }
@@ -1188,7 +1188,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello\\nWorld\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello\nWorld"));
         }
@@ -1198,7 +1198,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello\\rWorld\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello\rWorld"));
         }
@@ -1208,7 +1208,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"Hello\\tWorld\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("Hello\tWorld"));
         }
@@ -1218,7 +1218,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"\\\"Hello\\n\\tWorld\\\"\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("\"Hello\n\tWorld\""));
         }
@@ -1226,7 +1226,7 @@ user:password", result);
         [Test]
         public void InvalidEscapeSequence()
         {
-            Assert.Throws<System.Exception>(() => 
+            Assert.Throws<System.Exception>(() =>
                 _lexer.Tokenize("{{\"Hello\\xWorld\"}}")
             );
         }
@@ -1234,7 +1234,7 @@ user:password", result);
         [Test]
         public void UnterminatedString()
         {
-            Assert.Throws<System.Exception>(() => 
+            Assert.Throws<System.Exception>(() =>
                 _lexer.Tokenize("{{\"Hello World")
             );
         }
@@ -1242,7 +1242,7 @@ user:password", result);
         [Test]
         public void EscapeAtEndOfString()
         {
-            Assert.Throws<System.Exception>(() => 
+            Assert.Throws<System.Exception>(() =>
                 _lexer.Tokenize("{{\"Hello World\\")
             );
         }
@@ -1252,7 +1252,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo(""));
         }
@@ -1262,7 +1262,7 @@ user:password", result);
         {
             var tokens = _lexer.Tokenize("{{\"\\n\"}}");
             var stringToken = tokens.FirstOrDefault(t => t.Type == TokenType.String);
-            
+
             Assert.That(stringToken, Is.Not.Null);
             Assert.That(stringToken.Value, Is.EqualTo("\n"));
         }
@@ -1368,7 +1368,7 @@ user:password", result);
         public void Literal_UnterminatedDirective_ShouldThrowException()
         {
             var template = "{{literal}}Unterminated content";
-            Assert.Throws<System.Exception>(() => 
+            Assert.Throws<System.Exception>(() =>
                 _interpreter.Interpret(template, new ExpandoObject())
             );
         }
@@ -1377,7 +1377,7 @@ user:password", result);
         public void Literal_MismatchedDirectives_ShouldThrowException()
         {
             var template = "{{literal}}{{/if}}";
-            Assert.Throws<System.Exception>(() => 
+            Assert.Throws<System.Exception>(() =>
                 _interpreter.Interpret(template, new ExpandoObject())
             );
         }
@@ -1845,7 +1845,7 @@ Line 3
         {
             dynamic person1 = new ExpandoObject();
             person1.name = "John";
-            
+
             dynamic person2 = new ExpandoObject();
             person2.name = "Jane";
 
@@ -1853,7 +1853,7 @@ Line 3
 
             dynamic data = new ExpandoObject();
             data.people = people;
-            
+
             var template = "{{ toJson(people) }}";
             var result = _interpreter.Interpret(template, data);
             Assert.That(result, Is.EqualTo("[{\"name\":\"John\"},{\"name\":\"Jane\"}]"));
@@ -1935,7 +1935,7 @@ Line 3
 
             var template = "{{ toJson(person, true) }}";
             var result = _interpreter.Interpret(template, data);
-            
+
             var expected = @"{
     ""name"": ""John"",
     ""address"": {
@@ -2001,22 +2001,22 @@ Line 3
             {
                 Assert.That(deserialized["company"], Is.EqualTo("Acme Corp"));
                 Assert.That(deserialized["active"], Is.EqualTo(true));
-                
+
                 var people = (System.Collections.ArrayList)deserialized["people"];
                 Assert.That(people.Count, Is.EqualTo(2));
-                
+
                 var firstPerson = (Dictionary<string, object>)people[0];
                 Assert.That(firstPerson["name"], Is.EqualTo("John"));
                 Assert.That(firstPerson["age"], Is.EqualTo(30));
-                
+
                 var firstAddress = (Dictionary<string, object>)firstPerson["address"];
                 Assert.That(firstAddress["city"], Is.EqualTo("New York"));
-                
+
                 var firstHobbies = (System.Collections.ArrayList)firstPerson["hobbies"];
                 Assert.That(firstHobbies[0], Is.EqualTo("reading"));
             });
         }
-        
+
         [Test]
         public void ToJson_WithSpecialCharacters_ReturnsCorrectJson()
         {
@@ -2026,7 +2026,7 @@ Line 3
             dynamic data = new ExpandoObject();
             data.specialChars = specialChars;
             var result = _interpreter.Interpret(template, data);
-            
+
             // Verify the result contains the special characters correctly
             Assert.That(result.Contains("你好"), Is.True);
             Assert.That(result.Contains("Pößen"), Is.True);
@@ -2235,7 +2235,7 @@ Line 3
         public void TokenizeBasicWhitespace_SingleSpace()
         {
             var tokens = _lexer.Tokenize("Hello World");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2249,7 +2249,7 @@ Line 3
         public void TokenizeBasicWhitespace_MultipleSpaces()
         {
             var tokens = _lexer.Tokenize("Hello    World");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2263,7 +2263,7 @@ Line 3
         public void TokenizeBasicWhitespace_Tabs()
         {
             var tokens = _lexer.Tokenize("Hello\tWorld");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2277,7 +2277,7 @@ Line 3
         public void TokenizeBasicWhitespace_MixedWhitespace()
         {
             var tokens = _lexer.Tokenize("Hello \t  World");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2291,7 +2291,7 @@ Line 3
         public void TokenizeNewlines_SingleUnixNewline()
         {
             var tokens = _lexer.Tokenize("Hello\nWorld");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2305,7 +2305,7 @@ Line 3
         public void TokenizeNewlines_SingleWindowsNewline()
         {
             var tokens = _lexer.Tokenize("Hello\r\nWorld");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2319,7 +2319,7 @@ Line 3
         public void TokenizeNewlines_SingleMacNewline()
         {
             var tokens = _lexer.Tokenize("Hello\rWorld");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2333,7 +2333,7 @@ Line 3
         public void TokenizeNewlines_MultipleNewlines()
         {
             var tokens = _lexer.Tokenize("Hello\n\nWorld");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(4));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2349,7 +2349,7 @@ Line 3
         public void TokenizeMixedWhitespaceAndNewlines()
         {
             var tokens = _lexer.Tokenize("Hello  \n  World");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(5));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2367,7 +2367,7 @@ Line 3
         public void TokenizeDirectiveWithWhitespace()
         {
             var tokens = _lexer.Tokenize("Hello {{ name }}World");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(6));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello"));
@@ -2394,7 +2394,7 @@ Line 3
         public void TokenizeOnlyWhitespace()
         {
             var tokens = _lexer.Tokenize("   \t  ");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(1));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Whitespace));
             Assert.That(tokens[0].Value, Is.EqualTo("   \t  "));
@@ -2404,7 +2404,7 @@ Line 3
         public void TokenizeOnlyNewlines()
         {
             var tokens = _lexer.Tokenize("\n\r\n\n");
-            
+
             Assert.That(tokens.Count, Is.EqualTo(3));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Newline));
             Assert.That(tokens[0].Value, Is.EqualTo("\n"));
@@ -2420,9 +2420,9 @@ Line 3
             var input = "Hello,\n" +
                        "  {{name}}  \r\n" +
                        "\tWelcome!";
-            
+
             var tokens = _lexer.Tokenize(input);
-            
+
             Assert.That(tokens.Count, Is.EqualTo(10));
             Assert.That(tokens[0].Type, Is.EqualTo(TokenType.Text));
             Assert.That(tokens[0].Value, Is.EqualTo("Hello,"));
@@ -2451,7 +2451,7 @@ Line 3
         {
             var input = "Hello\n  World";
             var tokens = _lexer.Tokenize(input);
-            
+
             Assert.That(tokens.Count, Is.EqualTo(4));
             Assert.That(tokens[0].Position, Is.EqualTo(0)); // "Hello"
             Assert.That(tokens[1].Position, Is.EqualTo(5)); // "\n"
@@ -2466,7 +2466,7 @@ Line 3
 
             // Evaluate with empty context to get the result
             var result = _interpreter.Interpret(input, new ExpandoObject());
-            
+
             // The result should preserve all whitespace and newlines
             Assert.That(result, Is.EqualTo("Hello\n  World"));
         }
@@ -2490,9 +2490,9 @@ Line 3
             var template = "Hello  {{ name }}  World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Hello  Test  World"));
         }
 
@@ -2502,9 +2502,9 @@ Line 3
             var template = "Hello  {{- name }} World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("HelloTest World"));
         }
 
@@ -2514,9 +2514,9 @@ Line 3
             var template = "Hello {{ name -}}  World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Hello TestWorld"));
         }
 
@@ -2526,9 +2526,9 @@ Line 3
             var template = "Hello  {{- name -}}  World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("HelloTestWorld"));
         }
 
@@ -2538,9 +2538,9 @@ Line 3
             var template = "Hello\n  {{- name }} World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("HelloTest World"));
         }
 
@@ -2550,9 +2550,9 @@ Line 3
             var template = "Hello {{ name -}}  \nWorld";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Hello TestWorld"));
         }
 
@@ -2562,9 +2562,9 @@ Line 3
             var template = "Hello\n  {{- name -}}  \nWorld";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("HelloTestWorld"));
         }
 
@@ -2575,9 +2575,9 @@ Line 3
             dynamic data = new ExpandoObject();
             data.first = "Test1";
             data.second = "Test2";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("HelloTest1Test2World"));
         }
 
@@ -2585,9 +2585,9 @@ Line 3
         public void IfStatement_HandlesTrimmingCorrectly()
         {
             var template = "Start\n  {{- if true -}}\n    Content\n  {{- /if -}}  \nEnd";
-            
+
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            
+
             Assert.That(result, Is.EqualTo("Start    ContentEnd"));
         }
 
@@ -2597,9 +2597,9 @@ Line 3
             var template = "Start\n  {{- for item in items -}}\n    {{ item -}}  \n  {{- /for -}}  \nEnd";
             dynamic data = new ExpandoObject();
             data.items = new List<decimal>() { 1, 2, 3 };
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Start    1    2    3End"));
         }
 
@@ -2607,9 +2607,9 @@ Line 3
         public void Comments_HandlesTrimmingCorrectly()
         {
             var template = "Start\n  {{-* Comment *-}}  \nEnd";
-            
+
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            
+
             Assert.That(result, Is.EqualTo("StartEnd"));
         }
 
@@ -2623,9 +2623,9 @@ Line 3
 World";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Hello    TestWorld"));
         }
 
@@ -2635,9 +2635,9 @@ World";
             var template = "  {{- name -}}  ";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Test"));
         }
 
@@ -2647,9 +2647,9 @@ World";
             var template = "Hello\n\n  {{- name -}}  \n\nWorld";
             dynamic data = new ExpandoObject();
             data.name = "Test";
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Hello\nTest\nWorld"));
         }
 
@@ -2665,9 +2665,9 @@ World";
 End";
             dynamic data = new ExpandoObject();
             data.items = new List<decimal>() { 1, 2, 3 };
-            
+
             var result = _interpreter.Interpret(template, data);
-            
+
             Assert.That(result, Is.EqualTo("Start      1      2      3End"));
         }
 
@@ -2757,7 +2757,7 @@ End";
         {
             var data = new ExpandoObject() as IDictionary<string, object>;
             data["x"] = "hello world";
-            
+
             var template = "{{ (a) => x = 'foo', concat(a, x) }}";
             Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
@@ -2988,6 +2988,77 @@ End";
 
             // Assert
             Assert.That(result, Is.EqualTo("4"));
+        }
+
+        [Test]
+        public void IfFuncDoesNotConflictWithIfDirective()
+        {
+            // Arrange
+            var template = @"{{ if(1 > 2, 2, 3) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("3"));
+        }
+
+        [Test]
+        public void FactorialWorks()
+        {
+            var interpreter = new Interpreter();
+            var template = @"{{ let fact = (n) => if(n <= 1, 1, n * fact(n - 1)) }}{{ fact(5) }}";
+            var result = interpreter.Interpret(template, new ExpandoObject());
+            Assert.AreEqual("120", result);
+        }
+
+        // Mutual recursion example:
+        [Test]
+        public void MutualRecursionWorks()
+        {
+            var interpreter = new Interpreter();
+            var template = @"{{- let isEven = (n) => if(n == 0, true, isOdd(n - 1)) -}}
+    {{- let isOdd = (n) => if(n == 0, false, isEven(n - 1)) -}}
+    {{- isEven(10) -}}";
+            var result = interpreter.Interpret(template, new ExpandoObject());
+            Assert.AreEqual("True", result);
+        }
+
+        // Short-circuit evaluation example:
+        [Test]
+        public void ShortCircuitEvaluationWorks()
+        {
+            var interpreter = new Interpreter();
+            var template = @"{{ let dangerous = (n) => 1/0 }}{{ false && dangerous(0) }}";
+            var result = interpreter.Interpret(template, new ExpandoObject());
+            Assert.AreEqual("False", result);
+        }
+
+        // Fibonacci example with memoization:
+        [Test]
+        public void RecursiveFibonacciWorks()
+        {
+            var interpreter = new Interpreter();
+            var template = @"
+    {{- let fib = (n) => if(n <= 1, n, fib(n - 1) + fib(n - 2)) -}}
+    {{- fib(10) -}}";
+            var result = interpreter.Interpret(template, new ExpandoObject());
+            Assert.AreEqual("55", result);
+        }
+
+        // Y-combinator for anonymous recursion:
+        [Test]
+        public void YCombinatorWorks()
+        {
+            var interpreter = new Interpreter();
+            var template = @"
+    {{- let Y = (f) => ((x) => f((y) => x(x)(y)))((x) => f((y) => x(x)(y))) -}}
+    {{- let factorialF = (fact) => (n) => if(n <= 1, 1, n * fact(n - 1)) -}}
+    {{- let factorial = Y(factorialF) -}}
+    {{- factorial(5) -}}";
+            var result = interpreter.Interpret(template, new ExpandoObject());
+            Assert.AreEqual("120", result);
         }
     }
 }

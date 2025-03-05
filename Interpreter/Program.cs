@@ -1278,17 +1278,18 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            // First evaluate all arguments
-            var evaluatedArgs = _arguments.Select(arg => arg.Evaluate(context)).ToList();
-
             // Then evaluate the callable, but handle special cases
             var callable = _callable.Evaluate(context);
+
+            var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
+                _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
+                _arguments.Select(arg => arg.Evaluate(context)).ToList();
 
             // Now handle the callable based on its type
             if (callable is Func<List<dynamic>, dynamic> lambdaFunc)
             {
                 // Direct lambda invocation
-                return lambdaFunc(evaluatedArgs);
+                return lambdaFunc(args);
             }
             else if (callable is FunctionInfo functionInfo)
             {
@@ -1300,12 +1301,13 @@ namespace TemplateInterpreter
                 {
                     if (paramValue is Func<List<dynamic>, dynamic> paramFunc)
                     {
-                        return paramFunc(evaluatedArgs);
+                        return paramFunc(args);
                     }
                     else if (paramValue is FunctionInfo paramFuncInfo)
                     {
                         registry = context.GetFunctionRegistry();
-                        if (!registry.TryGetFunction(paramFuncInfo.Name, evaluatedArgs, out var function, out var effectiveArgs))
+
+                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
                         {
                             throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
                         }
@@ -1319,13 +1321,13 @@ namespace TemplateInterpreter
                 {
                     if (variableValue is Func<List<dynamic>, dynamic> variableFunc)
                     {
-                        return variableFunc(evaluatedArgs);
+                        return variableFunc(args);
                     }
                 }
 
                 // If not a parameter in any context or parameter isn't a function, try the registry
                 registry = context.GetFunctionRegistry();
-                if (!registry.TryGetFunction(functionInfo.Name, evaluatedArgs, out var func, out var effArgs))
+                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
                 {
                     throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
                 }
@@ -1337,6 +1339,42 @@ namespace TemplateInterpreter
 
 
             throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
+        }
+
+        private bool IsLazilyEvaluatedFunction(dynamic callable, int argumentCount, ExecutionContext context)
+        {
+            // Check if this is a function that requires lazy evaluation
+            if (callable is FunctionInfo functionInfo)
+            {
+                var registry = context.GetFunctionRegistry();
+                return registry.LazyFunctionExists(functionInfo.Name, argumentCount);
+            }
+            return false;
+        }
+    }
+
+    public class LazyValue
+    {
+        private readonly AstNode _expression;
+        private readonly ExecutionContext _capturedContext;
+        private bool _isEvaluated;
+        private dynamic _value;
+
+        public LazyValue(AstNode expression, ExecutionContext context)
+        {
+            _expression = expression;
+            _capturedContext = context;
+            _isEvaluated = false;
+        }
+
+        public dynamic Evaluate()
+        {
+            if (!_isEvaluated)
+            {
+                _value = _expression.Evaluate(_capturedContext);
+                _isEvaluated = true;
+            }
+            return _value;
         }
     }
 
@@ -1658,6 +1696,18 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
+            // short circuit eval for &&
+            if (_operator == TokenType.And)
+            {
+                return Convert.ToBoolean(_left.Evaluate(context)) && Convert.ToBoolean(_right.Evaluate(context));
+            }
+
+            // short circuit eval for ||
+            if (_operator == TokenType.Or)
+            {
+                return Convert.ToBoolean(_left.Evaluate(context)) || Convert.ToBoolean(_right.Evaluate(context));
+            }
+
             var left = _left.Evaluate(context);
             var right = _right.Evaluate(context);
 
@@ -1683,10 +1733,6 @@ namespace TemplateInterpreter
                     return Convert.ToDecimal(left) > Convert.ToDecimal(right);
                 case TokenType.GreaterThanEqual:
                     return Convert.ToDecimal(left) >= Convert.ToDecimal(right);
-                case TokenType.And:
-                    return Convert.ToBoolean(left) && Convert.ToBoolean(right);
-                case TokenType.Or:
-                    return Convert.ToBoolean(left) || Convert.ToBoolean(right);
                 default:
                     throw new Exception(string.Format("Unknown binary operator: {0}", _operator));
             }
@@ -2625,12 +2671,18 @@ namespace TemplateInterpreter
         public string Name { get; }
         public List<ParameterDefinition> Parameters { get; }
         public Func<List<dynamic>, dynamic> Implementation { get; }
+        public bool IsLazilyEvaluated { get; }
 
-        public FunctionDefinition(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)
+        public FunctionDefinition(
+            string name,
+            List<ParameterDefinition> parameters,
+            Func<List<dynamic>, dynamic> implementation,
+            bool isLazilyEvaluated)
         {
             Name = name;
             Parameters = parameters;
             Implementation = implementation;
+            IsLazilyEvaluated = isLazilyEvaluated;
         }
 
         public int RequiredParameterCount => Parameters.Count(p => !p.IsOptional);
@@ -2949,15 +3001,21 @@ namespace TemplateInterpreter
 
             Register("if",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(bool)),
-                    new ParameterDefinition(typeof(object)),
-                    new ParameterDefinition(typeof(object))
+                    new ParameterDefinition(typeof(LazyValue)),
+                    new ParameterDefinition(typeof(LazyValue)),
+                    new ParameterDefinition(typeof(LazyValue))
                 },
                 args =>
                 {
-                    var condition = Convert.ToBoolean(args[0]);
-                    return condition ? args[1] : args[2];
-                });
+                    var condition = args[0] as LazyValue;
+                    var trueBranch = args[1] as LazyValue;
+                    var falseBranch = args[2] as LazyValue;
+
+                    bool conditionResult = Convert.ToBoolean(condition.Evaluate());
+
+                    return conditionResult ? trueBranch.Evaluate() : falseBranch.Evaluate();
+                }, 
+                isLazilyEvaluated: true);
 
             Register("join",
                 new List<ParameterDefinition> {
@@ -3931,9 +3989,13 @@ namespace TemplateInterpreter
             return sb.ToString();
         }
 
-        public void Register(string name, List<ParameterDefinition> parameters, Func<List<dynamic>, dynamic> implementation)
+        public void Register(
+            string name,
+            List<ParameterDefinition> parameters,
+            Func<List<dynamic>, dynamic> implementation,
+            bool isLazilyEvaluated = false)
         {
-            var definition = new FunctionDefinition(name, parameters, implementation);
+            var definition = new FunctionDefinition(name, parameters, implementation, isLazilyEvaluated);
 
             if (!_functions.ContainsKey(name))
             {
@@ -3953,7 +4015,34 @@ namespace TemplateInterpreter
             _functions[name].Add(definition);
         }
 
-        public bool TryGetFunction(string name, List<dynamic> arguments, out FunctionDefinition matchingFunction, out List<dynamic> effectiveArguments)
+        public bool LazyFunctionExists(
+            string name,
+            int argumentCount)
+        {
+            if (!_functions.TryGetValue(name, out var overloads))
+            {
+                return false;
+            }
+
+            var candidates = overloads.Where(f =>
+                argumentCount >= f.RequiredParameterCount &&
+                argumentCount <= f.TotalParameterCount &&
+                f.IsLazilyEvaluated
+            ).ToList();
+
+            if (!candidates.Any())
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool TryGetFunction(
+            string name,
+            List<dynamic> arguments,
+            out FunctionDefinition matchingFunction,
+            out List<dynamic> effectiveArguments)
         {
             matchingFunction = null;
             effectiveArguments = null;
@@ -4096,6 +4185,12 @@ namespace TemplateInterpreter
             {
                 var argument = arguments[i];
                 var parameter = function.Parameters[i];
+
+                // Special handling for LazyValue
+                if (parameter.Type == typeof(LazyValue) && argument is LazyValue)
+                {
+                    continue;
+                }
 
                 // Handle null arguments
                 if (argument == null)
