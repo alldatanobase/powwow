@@ -3094,7 +3094,7 @@ namespace TemplateInterpreter
             Register("concat",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(bool))
+                    new ParameterDefinition(typeof(object))
                 },
                 args =>
                 {
@@ -3105,69 +3105,16 @@ namespace TemplateInterpreter
                         throw new Exception("concat function requires an array as first argument");
 
                     // Convert the enumerable to a list and add the new item
-                    var result = enumerable.Cast<object>().ToList();
-                    result.Add(item);
-
-                    return result;
-                });
-
-            Register("concat",
-                new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(decimal))
-                },
-                args =>
-                {
-                    var enumerable = args[0] as System.Collections.IEnumerable;
-                    var item = args[1];
-
-                    if (enumerable == null)
-                        throw new Exception("concat function requires an array as first argument");
-
-                    // Convert the enumerable to a list and add the new item
-                    var result = enumerable.Cast<object>().ToList();
-                    result.Add(item);
-
-                    return result;
-                });
-
-            Register("concat",
-                new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(string))
-                },
-                args =>
-                {
-                    var enumerable = args[0] as System.Collections.IEnumerable;
-                    var item = args[1];
-
-                    if (enumerable == null)
-                        throw new Exception("concat function requires an array as first argument");
-
-                    // Convert the enumerable to a list and add the new item
-                    var result = enumerable.Cast<object>().ToList();
-                    result.Add(item);
-
-                    return result;
-                });
-
-            Register("concat",
-                new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
-                },
-                args =>
-                {
-                    var first = args[0] as System.Collections.IEnumerable;
-                    var second = args[1] as System.Collections.IEnumerable;
-
-                    if (first == null || second == null)
-                        throw new Exception("concat function requires both arguments to be arrays");
-
-                    // Combine both enumerables into a single list
-                    var result = first.Cast<object>().Concat(second.Cast<object>()).ToList();
-
-                    return result;
+                    if (item is System.Collections.IEnumerable toConcat)
+                    {
+                        return enumerable.Cast<object>().Concat(toConcat.Cast<object>()).ToList();
+                    }
+                    else
+                    {
+                        var result = enumerable.Cast<object>().ToList();
+                        result.Add(item);
+                        return result;
+                    }
                 });
 
             Register("take",
