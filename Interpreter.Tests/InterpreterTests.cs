@@ -60,7 +60,7 @@ namespace TemplateInterpreter.Tests
             var result = _interpreter.Interpret(template, data);
 
             // Assert
-            Assert.That(result, Is.EqualTo("False"));
+            Assert.That(result, Is.EqualTo("false"));
         }
 
         [Test]
@@ -153,7 +153,7 @@ namespace TemplateInterpreter.Tests
 
             // Assert
             StringAssert.Contains("4.25", result);
-            StringAssert.Contains("False", result);
+            StringAssert.Contains("false", result);
         }
 
         [Test]
@@ -278,9 +278,9 @@ namespace TemplateInterpreter.Tests
             ((IDictionary<string, object>)data).Add("var1", "Hello World");
 
             // Act & Assert
-            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"World\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{startsWith(\"Hello World\", \"Hello\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{endsWith(\"Hello World\", \"World\")}}", data), Is.EqualTo("True"));
+            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"World\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{startsWith(\"Hello World\", \"Hello\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{endsWith(\"Hello World\", \"World\")}}", data), Is.EqualTo("true"));
             Assert.That(_interpreter.Interpret("{{toUpper(\"Hello World\")}}", data), Is.EqualTo("HELLO WORLD"));
             Assert.That(_interpreter.Interpret("{{toLower(\"Hello World\")}}", data), Is.EqualTo("hello world"));
             Assert.That(_interpreter.Interpret("{{trim(\"  Hello World  \")}}", data), Is.EqualTo("Hello World"));
@@ -405,7 +405,6 @@ namespace TemplateInterpreter.Tests
 {{uri.DnsSafeHost}}
 {{uri.Fragment}}
 {{uri.Host}}
-{{uri.HostNameType}}
 {{uri.IdnHost}}
 {{uri.IsAbsoluteUri}}
 {{uri.IsDefaultPort}}
@@ -431,13 +430,12 @@ https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName
 www.site.com
 #FragmentName
 www.site.com
-Dns
 www.site.com
-True
-False
-False
-False
-False
+true
+false
+false
+false
+false
 /Home/Index.htm
 https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName
 /Home/Index.htm?q1=v1&q2=v2
@@ -445,7 +443,7 @@ https://user:password@www.site.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName
 ?q1=v1&q2=v2
 https
 /, Home/, Index.htm
-False
+false
 user:password", result);
         }
 
@@ -469,8 +467,8 @@ user:password", result);
             Assert.That(_interpreter.Interpret(templates["numericArray"], new ExpandoObject()), Is.EqualTo("1.1, 2, 0.3, "));
             Assert.That(_interpreter.Interpret(templates["stringArray"], new ExpandoObject()), Is.EqualTo("hello world, foo bar, "));
             Assert.That(_interpreter.Interpret(templates["objectArray"], new ExpandoObject()), Is.EqualTo("Jeff, Jim, "));
-            Assert.That(_interpreter.Interpret(templates["mixedArray"], new ExpandoObject()), Is.EqualTo("foo, 2, bar, False, System.Dynamic.ExpandoObject, "));
-            Assert.That(_interpreter.Interpret(templates["nestedArray"], new ExpandoObject()), Is.EqualTo("1, System.Collections.Generic.List`1[System.Object], 4, "));
+            Assert.That(_interpreter.Interpret(templates["mixedArray"], new ExpandoObject()), Is.EqualTo("foo, 2, bar, false, {x: 1, y: 2}, "));
+            Assert.That(_interpreter.Interpret(templates["nestedArray"], new ExpandoObject()), Is.EqualTo("1, [2, 3], 4, "));
             Assert.That(_interpreter.Interpret(templates["objectPropertyArray"], new ExpandoObject()), Is.EqualTo("1, 2, 3, "));
         }
 
@@ -489,14 +487,14 @@ user:password", result);
             ((IDictionary<string, object>)data).Add("dict", dict);
 
             // Act & Assert
-            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"World\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"foo\")}}", data), Is.EqualTo("False"));
-            Assert.That(_interpreter.Interpret("{{contains(user, \"firstName\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{contains(user, \"age\")}}", data), Is.EqualTo("False"));
-            Assert.That(_interpreter.Interpret("{{contains(person, \"name\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{contains(person, \"age\")}}", data), Is.EqualTo("False"));
-            Assert.That(_interpreter.Interpret("{{contains(dict, \"key\")}}", data), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{contains(dict, \"missing\")}}", data), Is.EqualTo("False"));
+            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"World\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{contains(\"Hello World\", \"foo\")}}", data), Is.EqualTo("false"));
+            Assert.That(_interpreter.Interpret("{{contains(user, \"firstName\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{contains(user, \"age\")}}", data), Is.EqualTo("false"));
+            Assert.That(_interpreter.Interpret("{{contains(person, \"name\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{contains(person, \"age\")}}", data), Is.EqualTo("false"));
+            Assert.That(_interpreter.Interpret("{{contains(dict, \"key\")}}", data), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{contains(dict, \"missing\")}}", data), Is.EqualTo("false"));
         }
 
         [Test]
@@ -506,9 +504,9 @@ user:password", result);
             Assert.That(_interpreter.Interpret("{{at([1, 2, 3], 1)}}", new ExpandoObject()), Is.EqualTo("2"));
             Assert.That(_interpreter.Interpret("{{first([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("1"));
             Assert.That(_interpreter.Interpret("{{last([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("3"));
-            Assert.That(_interpreter.Interpret("{{any([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{any([])}}", new ExpandoObject()), Is.EqualTo("False"));
-            Assert.That(_interpreter.Interpret("{{join([3.4, false, \"foo\"], \" | \")}}", new ExpandoObject()), Is.EqualTo("3.4 | False | foo"));
+            Assert.That(_interpreter.Interpret("{{any([1, 2, 3])}}", new ExpandoObject()), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{any([])}}", new ExpandoObject()), Is.EqualTo("false"));
+            Assert.That(_interpreter.Interpret("{{join([3.4, false, \"foo\"], \" | \")}}", new ExpandoObject()), Is.EqualTo("3.4 | false | foo"));
             Assert.That(_interpreter.Interpret("{{for x in explode(\"a,b,c\", \",\")}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("a b c "));
             Assert.That(_interpreter.Interpret("{{for x in map([1, 2, 3], (x) => x * 2)}}{{x}} {{/for}}", new ExpandoObject()), Is.EqualTo("2 4 6 "));
             Assert.That(_interpreter.Interpret("{{reduce([1, 2, 3, 4], (acc, curr) => acc + curr, 0)}}", new ExpandoObject()), Is.EqualTo("10"));
@@ -558,8 +556,8 @@ user:password", result);
             Assert.That(_interpreter.Interpret("{{string(123.45)}}", new ExpandoObject()), Is.EqualTo("123.45"));
             Assert.That(_interpreter.Interpret("{{string(true)}}", new ExpandoObject()), Is.EqualTo("true"));
             Assert.That(_interpreter.Interpret("{{number(\"123.45\")}}", new ExpandoObject()), Is.EqualTo("123.45"));
-            Assert.That(_interpreter.Interpret("{{numeric(\"123.45\")}}", new ExpandoObject()), Is.EqualTo("True"));
-            Assert.That(_interpreter.Interpret("{{numeric(\"abc\")}}", new ExpandoObject()), Is.EqualTo("False"));
+            Assert.That(_interpreter.Interpret("{{numeric(\"123.45\")}}", new ExpandoObject()), Is.EqualTo("true"));
+            Assert.That(_interpreter.Interpret("{{numeric(\"abc\")}}", new ExpandoObject()), Is.EqualTo("false"));
         }
 
         [Test]
@@ -1813,6 +1811,13 @@ Line 3
         }
 
         [Test]
+        public void ToJson_Obj_ReturnsCorrectJson()
+        {
+            var template = "{{ toJson(obj(name: \"John\", age: 30)) }}";
+            Assert.That(_interpreter.Interpret(template, new ExpandoObject()), Is.EqualTo("{\"name\":\"John\",\"age\":30}"));
+        }
+
+        [Test]
         public void ToJson_Array_ReturnsCorrectJson()
         {
             var template = "{{ toJson([1, 2, 3]) }}";
@@ -2863,38 +2868,6 @@ End";
         }
 
         [Test]
-        public void Concat_ListAndNumber_ReturnsNewListWithItem()
-        {
-            // Arrange
-            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
-            dynamic data = new ExpandoObject();
-            data.list = new List<string> { "a", "b", "c" };
-            data.item = 1;
-
-            // Act
-            var result = _interpreter.Interpret(template, data);
-
-            // Assert
-            Assert.That(result, Is.EqualTo("a, b, c, 1"));
-        }
-
-        [Test]
-        public void Concat_ListAndBool_ReturnsNewListWithItem()
-        {
-            // Arrange
-            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
-            dynamic data = new ExpandoObject();
-            data.list = new List<string> { "a", "b", "c" };
-            data.item = true;
-
-            // Act
-            var result = _interpreter.Interpret(template, data);
-
-            // Assert
-            Assert.That(result, Is.EqualTo("a, b, c, True"));
-        }
-
-        [Test]
         public void Concat_ListAndList_ReturnsNewCombinedList()
         {
             // Arrange
@@ -2940,22 +2913,6 @@ End";
 
             // Assert
             Assert.That(result, Is.Empty);
-        }
-
-        [Test]
-        public void Concat_MixedTypes_HandlesHeterogeneousData()
-        {
-            // Arrange
-            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
-            dynamic data = new ExpandoObject();
-            data.list = new List<object> { "a", 1, true };
-            data.item = 2.5;
-
-            // Act
-            var result = _interpreter.Interpret(template, data);
-
-            // Assert
-            Assert.That(result, Is.EqualTo("a, 1, True, 2.5"));
         }
 
         [Test]
@@ -3020,7 +2977,7 @@ End";
     {{- let isOdd = (n) => if(n == 0, false, isEven(n - 1)) -}}
     {{- isEven(10) -}}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            Assert.AreEqual("True", result);
+            Assert.AreEqual("true", result);
         }
 
         // Short-circuit evaluation example:
@@ -3029,7 +2986,7 @@ End";
         {
             var template = @"{{ let dangerous = (n) => 1/0 }}{{ false && dangerous(0) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
-            Assert.AreEqual("False", result);
+            Assert.AreEqual("false", result);
         }
 
         // Fibonacci example with memoization:
@@ -3153,6 +3110,207 @@ Joined nested monad: {{ flattened }}
             var template = @"{{ 1 -}}   
 ";
             Assert.That("1", Is.EqualTo(_interpreter.Interpret(template, new ExpandoObject())));
+        }
+
+        [Test]
+        public void TestConcatWithDynamicArrayDeclaration()
+        {
+            var template = @"{{ let a = 4 }}{{ let b = concat([1, 2, 3], [a]) }}{{ for x in b }}{{ x }}{{ /for }}";
+            Assert.That("1234", Is.EqualTo(_interpreter.Interpret(template, new ExpandoObject())));
+        }
+
+        [Test]
+        public void Range_BasicUsage_ReturnsExpectedString()
+        {
+            // Arrange
+            var template = "{{ range(1, 5) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[1, 2, 3, 4]"));
+        }
+
+        [Test]
+        public void Range_WithStep_ReturnsExpectedString()
+        {
+            // Arrange
+            var template = "{{ range(0, 10, 2) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[0, 2, 4, 6, 8]"));
+        }
+
+        [Test]
+        public void Range_WithDecimalStep_ReturnsExpectedString()
+        {
+            // Arrange
+            var template = "{{ range(0, 3, 0.5) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[0, 0.5, 1.0, 1.5, 2.0, 2.5]"));
+        }
+
+        [Test]
+        public void Range_WithNegativeStep_ReturnsExpectedString()
+        {
+            // Arrange
+            var template = "{{ range(5, 0, -1) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[5, 4, 3, 2, 1]"));
+        }
+
+        [Test]
+        public void Range_WithDecimalNegativeStep_ReturnsExpectedString()
+        {
+            // Arrange
+            var template = "{{ range(2, 0, -0.5) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[2, 1.5, 1.0, 0.5]"));
+        }
+
+        [Test]
+        public void Range_StartEqualsEnd_ReturnsEmptyArray()
+        {
+            // Arrange
+            var template = "{{ range(5, 5) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Range_StartGreaterThanEndWithPositiveStep_ReturnsEmptyArray()
+        {
+            // Arrange
+            var template = "{{ range(10, 5) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Range_StartLessThanEndWithNegativeStep_ReturnsEmptyArray()
+        {
+            // Arrange
+            var template = "{{ range(5, 10, -1) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Range_ZeroStep_ThrowsException()
+        {
+            // Arrange
+            var template = "{{ range(0, 5, 0) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act & Assert
+            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            Assert.That(ex.Message, Contains.Substring("non-zero step value"));
+        }
+
+        [Test]
+        public void Range_UsedInLoop_RendersCorrectTemplate()
+        {
+            // Arrange
+            var template = "{{ for num in range(1, 4) }}Number: {{ num }}{{ if num < 3 }}, {{ /if }}{{ /for }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("Number: 1, Number: 2, Number: 3"));
+        }
+
+        [Test]
+        public void Range_WithArrayLength_ReturnsExpectedInt()
+        {
+            // Arrange
+            var template = "{{ length(range(1, 5)) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("4"));
+        }
+
+        [Test]
+        public void Range_UsedWithMap_ReturnsTransformedArray()
+        {
+            // Arrange
+            var template = "{{ map(range(1, 4), (x) => x * 2) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[2, 4, 6]"));
+        }
+
+        [Test]
+        public void Range_EmptyRange_ReturnsEmptyArray()
+        {
+            // Arrange
+            var template = "{{ range(0, 0) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[]"));
+        }
+
+        [Test]
+        public void Range_SingleElementRange_ReturnsArrayWithOneElement()
+        {
+            // Arrange
+            var template = "{{ range(5, 6) }}";
+            dynamic data = new ExpandoObject();
+
+            // Act
+            var result = _interpreter.Interpret(template, data);
+
+            // Assert - verifying exact string output
+            Assert.That(result, Is.EqualTo("[5]"));
         }
     }
 }

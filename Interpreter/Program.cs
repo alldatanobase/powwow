@@ -905,11 +905,6 @@ namespace TemplateInterpreter
                     _tokens.Add(new Token(TokenType.Plus, "+", _position));
                     _position++;
                 }
-                else if (TryMatch("-"))
-                {
-                    _tokens.Add(new Token(TokenType.Minus, "-", _position));
-                    _position++;
-                }
                 else if (TryMatch("*"))
                 {
                     _tokens.Add(new Token(TokenType.Multiply, "*", _position));
@@ -937,6 +932,11 @@ namespace TemplateInterpreter
                 else if (char.IsDigit(_input[_position]) || (_input[_position] == '-' && char.IsDigit(PeekNext())))
                 {
                     TokenizeNumber();
+                }
+                else if (TryMatch("-"))
+                {
+                    _tokens.Add(new Token(TokenType.Minus, "-", _position));
+                    _position++;
                 }
                 else if (char.IsLetter(_input[_position]) || _input[_position] == '_')
                 {
@@ -1845,10 +1845,11 @@ namespace TemplateInterpreter
             var result = new StringBuilder();
             foreach (var child in _children)
             {
-                result.Append(child.Evaluate(context));
+                result.Append(TypeHelper.FormatOutput(child.Evaluate(context)));
             }
             return result.ToString();
         }
+
     }
 
     public class Parser
@@ -2904,6 +2905,44 @@ namespace TemplateInterpreter
                     return str.Substring(startIndex);
                 });
 
+            Register("range",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(decimal)),
+                    new ParameterDefinition(typeof(decimal)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = Convert.ToDecimal(args[0]);
+                    var end = Convert.ToDecimal(args[1]);
+                    var step = Convert.ToDecimal(args[2]);
+                    
+                    if (step == 0)
+                    {
+                        throw new Exception("range function requires a non-zero step value");
+                    }
+                    
+                    var result = new List<decimal>();
+                    
+                    // Handle both positive and negative step values
+                    if (step > 0)
+                    {
+                        for (var value = start; value < end; value += step)
+                        {
+                            result.Add(value);
+                        }
+                    }
+                    else
+                    {
+                        for (var value = start; value > end; value += step)
+                        {
+                            result.Add(value);
+                        }
+                    }
+                    
+                    return result;
+                });
+
             Register("filter",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
@@ -3032,7 +3071,7 @@ namespace TemplateInterpreter
                     if (delimiter == null)
                         throw new Exception("join function requires a string as second argument");
 
-                    return string.Join(delimiter, array.Cast<object>().Select(x => x?.ToString() ?? ""));
+                    return string.Join(delimiter, array.Cast<object>().Select(x => TypeHelper.FormatOutput(x ?? "")));
                 });
 
             Register("explode",
@@ -3094,27 +3133,20 @@ namespace TemplateInterpreter
             Register("concat",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(object))
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
                 args =>
                 {
-                    var enumerable = args[0] as System.Collections.IEnumerable;
-                    var item = args[1];
+                    var first = args[0] as System.Collections.IEnumerable;
+                    var second = args[1] as System.Collections.IEnumerable;
 
-                    if (enumerable == null)
-                        throw new Exception("concat function requires an array as first argument");
+                    if (first == null || second == null)
+                        throw new Exception("concat function requires both arguments to be arrays");
 
-                    // Convert the enumerable to a list and add the new item
-                    if (item is System.Collections.IEnumerable toConcat)
-                    {
-                        return enumerable.Cast<object>().Concat(toConcat.Cast<object>()).ToList();
-                    }
-                    else
-                    {
-                        var result = enumerable.Cast<object>().ToList();
-                        result.Add(item);
-                        return result;
-                    }
+                    // Combine both enumerables into a single list
+                    var result = first.Cast<object>().Concat(second.Cast<object>()).ToList();
+
+                    return result;
                 });
 
             Register("take",
@@ -3759,8 +3791,7 @@ namespace TemplateInterpreter
                     {
                         // Convert the object to a format suitable for serialization
                         var serializable = ConvertToSerializable(obj);
-                        var serializer = new JavaScriptSerializer();
-                        var json = serializer.Serialize(serializable);
+                        var json = TypeHelper.JsonSerialize(serializable);
 
                         if (formatted)
                         {
@@ -4172,6 +4203,116 @@ namespace TemplateInterpreter
 
     public class TypeHelper
     {
+        public static string FormatOutput(dynamic evaluated, bool serializing = false)
+        {
+            if (TypeHelper.IsConvertibleToDecimal(evaluated))
+            {
+                return evaluated.ToString();
+            }
+            else if (evaluated is bool)
+            {
+                return evaluated ? "true" : "false";
+            }
+            if (evaluated is DateTime)
+            {
+                return evaluated.ToString("o"); // ISO 8601 format
+            }
+            else if (evaluated is Uri)
+            {
+                return evaluated.ToString();
+            }
+            else if ((evaluated is string || evaluated is char) && serializing)
+            {
+                return $"\"{evaluated.ToString()}\"";
+            }
+            else if ((evaluated is string || evaluated is char))
+            {
+                return evaluated.ToString();
+            }
+            else if (evaluated is List<dynamic> array)
+            {
+                return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item, true))), "]");
+            }
+            else if (evaluated is List<decimal> arrayDecimals)
+            {
+                return string.Concat("[", string.Join(", ", arrayDecimals.Select(item => FormatOutput(item, true))), "]");
+            }
+            else if (evaluated is List<bool> arrayBools)
+            {
+                return string.Concat("[", string.Join(", ", arrayBools.Select(item => FormatOutput(item, true))), "]");
+            }
+            else if (evaluated is List<string> arrayStrings)
+            {
+                return string.Concat("[", string.Join(", ", arrayStrings.Select(item => FormatOutput(item, true))), "]");
+            }
+            else if (evaluated is IDictionary<string, object> dict)
+            {
+                return string.Concat("{", 
+                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key], true)))), "}");
+            }
+            else if (evaluated is ExpandoObject expando)
+            {
+                return string.Concat("{", 
+                    string.Join(", ", expando.Select(kvp => string.Concat(kvp.Key, ": ", FormatOutput(kvp.Value, true)))), "}");
+            }
+            else
+            {
+                return "{_object}";
+            }
+        }
+
+        public static string JsonSerialize(dynamic evaluated)
+        {
+            if (TypeHelper.IsConvertibleToDecimal(evaluated))
+            {
+                return evaluated.ToString();
+            }
+            else if (evaluated is bool)
+            {
+                return evaluated ? "true" : "false";
+            }
+            if (evaluated is DateTime)
+            {
+                var serializer = new JavaScriptSerializer();
+                return serializer.Serialize(evaluated.ToString("o")); // ISO 8601 format
+            }
+            else if (evaluated is string || evaluated is char || evaluated is Uri)
+            {
+                var serializer = new JavaScriptSerializer();
+                return serializer.Serialize(evaluated.ToString());
+            }
+            else if (evaluated is List<dynamic> array)
+            {
+                return string.Concat("[", string.Join(",", array.Select(item => JsonSerialize(item))), "]");
+            }
+            else if (evaluated is List<decimal> arrayDecimals)
+            {
+                return string.Concat("[", string.Join(",", arrayDecimals.Select(item => JsonSerialize(item))), "]");
+            }
+            else if (evaluated is List<bool> arrayBools)
+            {
+                return string.Concat("[", string.Join(",", arrayBools.Select(item => JsonSerialize(item))), "]");
+            }
+            else if (evaluated is List<string> arrayStrings)
+            {
+                return string.Concat("[", string.Join(",", arrayStrings.Select(item => JsonSerialize(item))), "]");
+            }
+            else if (evaluated is IDictionary<string, object> dict)
+            {
+                return string.Concat("{", 
+                    string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
+            }
+            else if (evaluated is ExpandoObject expando)
+            {
+                return string.Concat("{", 
+                    string.Join(",", expando.Select(kvp => string.Concat("\"", kvp.Key, "\"", ":", JsonSerialize(kvp.Value)))), "}");
+            }
+            else
+            {
+                return $"\"{evaluated.ToString()}\"";
+            }
+        }
+
         public static bool IsConvertibleToDecimal(dynamic value)
         {
             if (value == null)
