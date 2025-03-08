@@ -3007,9 +3007,8 @@ End";
         [Test]
         public void FactorialWorks()
         {
-            var interpreter = new Interpreter();
             var template = @"{{ let fact = (n) => if(n <= 1, 1, n * fact(n - 1)) }}{{ fact(5) }}";
-            var result = interpreter.Interpret(template, new ExpandoObject());
+            var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.AreEqual("120", result);
         }
 
@@ -3017,11 +3016,10 @@ End";
         [Test]
         public void MutualRecursionWorks()
         {
-            var interpreter = new Interpreter();
             var template = @"{{- let isEven = (n) => if(n == 0, true, isOdd(n - 1)) -}}
     {{- let isOdd = (n) => if(n == 0, false, isEven(n - 1)) -}}
     {{- isEven(10) -}}";
-            var result = interpreter.Interpret(template, new ExpandoObject());
+            var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.AreEqual("True", result);
         }
 
@@ -3029,9 +3027,8 @@ End";
         [Test]
         public void ShortCircuitEvaluationWorks()
         {
-            var interpreter = new Interpreter();
             var template = @"{{ let dangerous = (n) => 1/0 }}{{ false && dangerous(0) }}";
-            var result = interpreter.Interpret(template, new ExpandoObject());
+            var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.AreEqual("False", result);
         }
 
@@ -3039,11 +3036,10 @@ End";
         [Test]
         public void RecursiveFibonacciWorks()
         {
-            var interpreter = new Interpreter();
             var template = @"
     {{- let fib = (n) => if(n <= 1, n, fib(n - 1) + fib(n - 2)) -}}
     {{- fib(10) -}}";
-            var result = interpreter.Interpret(template, new ExpandoObject());
+            var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.AreEqual("55", result);
         }
 
@@ -3051,14 +3047,112 @@ End";
         [Test]
         public void YCombinatorWorks()
         {
-            var interpreter = new Interpreter();
             var template = @"
     {{- let Y = (f) => ((x) => f((y) => x(x)(y)))((x) => f((y) => x(x)(y))) -}}
     {{- let factorialF = (fact) => (n) => if(n <= 1, 1, n * fact(n - 1)) -}}
     {{- let factorial = Y(factorialF) -}}
     {{- factorial(5) -}}";
-            var result = interpreter.Interpret(template, new ExpandoObject());
+            var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.AreEqual("120", result);
+        }
+
+        [Test]
+        public void CallingObjectFunctionWorks()
+        {
+            var template = @"{{ let o = (x) => self = (() => obj(value: () => x, y: 2, timesY: () => o(self.y * x)))(), self }}{{ let o1 = o(2) }}{{ o1.timesY().value() }}";
+            Assert.AreEqual("4", _interpreter.Interpret(template, new ExpandoObject()));
+        }
+
+        [Test]
+        public void TestIdentityMonad()
+        {
+            const string template = @"
+{{- let Identity = (x) => 
+   self = (() => obj(
+     value: () => x,
+     map: (f) => Identity(f(x)),
+     bind: (f) => f(x),
+     join: () => x.value(),
+     chain: (f1, f2) => self.map(f1).map(f2)
+   ))(), 
+   self 
+-}}
+
+{{-* Basic value wrapping and extraction *-}}
+{{- let id1 = Identity(5) -}}
+Value 1: {{ id1.value() }}
+
+{{-* Map operation *-}}
+{{- let id2 = id1.map((x) => x * 2) -}}
+Mapped value: {{ id2.value() }}
+
+{{-* Bind operation with a monad-returning function *-}}
+{{- let multiplyAndWrap = (x) => Identity(x * 3) -}}
+{{- let id3 = id1.bind(multiplyAndWrap) -}}
+Bound value: {{ id3.value() }}
+
+{{-* Chaining multiple operations *-}}
+{{- let id4 = Identity(1).map((x) => x + 1).map((x) => x * 2) -}}
+Chained operations: {{ id4.value() }}
+
+{{-* Using bind for composition *-}}
+{{- let add10 = (x) => Identity(x + 10) -}}
+{{- let double = (x) => Identity(x * 2) -}}
+{{- let id5 = Identity(5).bind(add10).bind(double) -}}
+Composed functions: {{ id5.value() }}
+
+{{-* Implementing left identity law: return a >>= f ≡ f a *-}}
+{{- let leftIdValue = Identity(7).bind(add10).value() -}}
+{{- let directFValue = add10(7).value() -}}
+Left identity (should be equal): {{ leftIdValue }} and {{ directFValue }}
+
+{{-* Implementing right identity law: m >>= return ≡ m *-}}
+{{- let monad = Identity(42) -}}
+{{- let rightIdValue = monad.bind(Identity).value() -}}
+Right identity (should be same as 42): {{ rightIdValue }}
+
+{{-* Implementing associativity law: (m >>= f) >>= g ≡ m >>= (\x -> f x >>= g) *-}}
+{{- let triple = (x) => Identity(x * 3) -}}
+{{- let left = Identity(3).bind(add10).bind(triple).value() -}}
+{{- let right = Identity(3).bind((x) => add10(x).bind(triple)).value() -}}
+Associativity (should be equal): {{ left }} and {{ right }}
+
+{{-* Using the chain helper function *-}}
+{{- let combined = Identity(5).chain((x) => x + 5, (x) => x * 2).value() -}}
+Chain helper result: {{ combined }}
+
+{{-* Handling nested monads *-}}
+{{- let nestedMonad = Identity(Identity(10)) -}}
+{{- let flattened = nestedMonad.join() -}}
+Joined nested monad: {{ flattened }}
+";
+
+            dynamic data = new ExpandoObject();
+            string result = _interpreter.Interpret(template, data);
+
+            // Verify basic identity monad operations
+            Assert.IsTrue(result.Contains("Value 1: 5"));
+            Assert.IsTrue(result.Contains("Mapped value: 10"));
+            Assert.IsTrue(result.Contains("Bound value: 15"));
+            Assert.IsTrue(result.Contains("Chained operations: 4"));
+            Assert.IsTrue(result.Contains("Composed functions: 30"));
+
+            // Verify monad laws
+            Assert.IsTrue(result.Contains("Left identity (should be equal): 17 and 17"));
+            Assert.IsTrue(result.Contains("Right identity (should be same as 42): 42"));
+            Assert.IsTrue(result.Contains("Associativity (should be equal): 39 and 39"));
+
+            // Verify helper functions
+            Assert.IsTrue(result.Contains("Chain helper result: 20"));
+            Assert.IsTrue(result.Contains("Joined nested monad: 10"));
+        }
+
+        [Test]
+        public void TestWhiteSpaceHandlingAtEnd()
+        {
+            var template = @"{{ 1 -}}   
+";
+            Assert.That("1", Is.EqualTo(_interpreter.Interpret(template, new ExpandoObject())));
         }
     }
 }

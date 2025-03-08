@@ -78,7 +78,7 @@ namespace TemplateInterpreter
                 ast = ProcessIncludes(ast);
             }
 
-            return ast.Evaluate(new ExecutionContext(data, _functionRegistry));
+            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null));
         }
 
         private AstNode ProcessIncludes(AstNode node)
@@ -132,13 +132,15 @@ namespace TemplateInterpreter
         private readonly Dictionary<string, dynamic> _iteratorValues;
         private readonly Dictionary<string, dynamic> _variables;
         private readonly FunctionRegistry _functionRegistry;
+        protected readonly ExecutionContext _parentContext;
 
-        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry)
+        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry, ExecutionContext parentContext)
         {
             _data = data;
             _iteratorValues = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();
             _functionRegistry = functionRegistry;
+            _parentContext = parentContext;
         }
 
         public virtual void DefineVariable(string name, dynamic value)
@@ -167,7 +169,7 @@ namespace TemplateInterpreter
 
         public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value)
         {
-            var newContext = new ExecutionContext(_data, _functionRegistry);
+            var newContext = new ExecutionContext(_data, _functionRegistry, this);
 
             // Copy variables to new context
             foreach (var variable in _variables)
@@ -249,7 +251,6 @@ namespace TemplateInterpreter
 
     public class LambdaExecutionContext : ExecutionContext
     {
-        private readonly ExecutionContext _parentContext;
         private readonly Dictionary<string, dynamic> _parameters;
         private readonly Dictionary<string, dynamic> _variables;
 
@@ -257,9 +258,8 @@ namespace TemplateInterpreter
             ExecutionContext parentContext,
             List<string> parameterNames,
             List<dynamic> parameterValues)
-            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry())
+            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext)
         {
-            _parentContext = parentContext;
             _parameters = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();
 
@@ -2512,12 +2512,12 @@ namespace TemplateInterpreter
                 }
                 expr = new FieldAccessNode(expr, fieldToken.Value);
                 Advance();
-            }
 
-            // Handle any invocations that follow nested object invocation
-            while (_position < _tokens.Count && Current().Type == TokenType.LeftParen)
-            {
-                expr = ParseInvocation(expr);
+                // Handle any invocations that follow nested object invocation
+                while (_position < _tokens.Count && Current().Type == TokenType.LeftParen)
+                {
+                    expr = ParseInvocation(expr);
+                }
             }
 
             return expr;
@@ -2578,10 +2578,10 @@ namespace TemplateInterpreter
             var token = Current();
 
             if (token.Type == TokenType.Newline &&
-                (_tokens.Count >= _position + 1 &&
+                (_tokens.Count > _position + 1 &&
                  _tokens[_position + 1].Type == TokenType.DirectiveStart &&
                  _tokens[_position + 1].Value == "{{-") ||
-                (_tokens.Count >= _position + 2 &&
+                (_tokens.Count > _position + 2 &&
                  _tokens[_position + 1].Type == TokenType.Whitespace &&
                  _tokens[_position + 2].Type == TokenType.DirectiveStart &&
                  _tokens[_position + 2].Value == "{{-") ||
@@ -3014,7 +3014,7 @@ namespace TemplateInterpreter
                     bool conditionResult = Convert.ToBoolean(condition.Evaluate());
 
                     return conditionResult ? trueBranch.Evaluate() : falseBranch.Evaluate();
-                }, 
+                },
                 isLazilyEvaluated: true);
 
             Register("join",
