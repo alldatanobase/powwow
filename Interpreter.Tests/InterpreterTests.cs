@@ -8,6 +8,7 @@ using Moq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace TemplateInterpreter.Tests
 {
@@ -18,6 +19,7 @@ namespace TemplateInterpreter.Tests
         private DataverseService _dataverseService;
         private Interpreter _interpreter;
         private Lexer _lexer;
+        private ExpandoObject _emptyData;
 
         [SetUp]
         public void Setup()
@@ -26,6 +28,7 @@ namespace TemplateInterpreter.Tests
             _dataverseService = new DataverseService(_mockOrgService.Object);
             _interpreter = new Interpreter(dataverseService: _dataverseService);
             _lexer = new Lexer();
+            _emptyData = new ExpandoObject();
         }
 
         [Test]
@@ -1818,6 +1821,13 @@ Line 3
         }
 
         [Test]
+        public void ToJson_Func_ReturnsCorrectJson()
+        {
+            var template = "{{ toJson(obj(name: \"John\", age: 30, fn: (x, y) => 2 * x)) }}";
+            Assert.That(_interpreter.Interpret(template, new ExpandoObject()), Is.EqualTo("{\"name\":\"John\",\"age\":30,\"fn\":\"lambda()\"}"));
+        }
+
+        [Test]
         public void ToJson_Array_ReturnsCorrectJson()
         {
             var template = "{{ toJson([1, 2, 3]) }}";
@@ -3158,7 +3168,7 @@ Joined nested monad: {{ flattened }}
             var result = _interpreter.Interpret(template, data);
 
             // Assert - verifying exact string output
-            Assert.That(result, Is.EqualTo("[0, 0.5, 1.0, 1.5, 2.0, 2.5]"));
+            Assert.That(result, Is.EqualTo("[0.0, 0.5, 1.0, 1.5, 2.0, 2.5]"));
         }
 
         [Test]
@@ -3186,7 +3196,7 @@ Joined nested monad: {{ flattened }}
             var result = _interpreter.Interpret(template, data);
 
             // Assert - verifying exact string output
-            Assert.That(result, Is.EqualTo("[2, 1.5, 1.0, 0.5]"));
+            Assert.That(result, Is.EqualTo("[2.0, 1.5, 1.0, 0.5]"));
         }
 
         [Test]
@@ -3311,6 +3321,319 @@ Joined nested monad: {{ flattened }}
 
             // Assert - verifying exact string output
             Assert.That(result, Is.EqualTo("[5]"));
+        }
+
+        [Test]
+        public void RangeYear_WithDefaultStep_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeYear(datetime(""2020-03-15""), datetime(""2023-01-01""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            // Parse the result and verify it contains the right dates
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(3, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 3, 15), dates[0]);
+            Assert.AreEqual(new DateTime(2021, 3, 15), dates[1]);
+            Assert.AreEqual(new DateTime(2022, 3, 15), dates[2]);
+        }
+
+        [Test]
+        public void RangeYear_WithCustomStep_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeYear(datetime(""2020-02-03""), datetime(""2026-01-01""), 2)
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(3, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 2, 3), dates[0]);
+            Assert.AreEqual(new DateTime(2022, 2, 3), dates[1]);
+            Assert.AreEqual(new DateTime(2024, 2, 3), dates[2]);
+        }
+
+        [Test]
+        public void RangeYear_WithNonIntegerStep_FloorsStepValue()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeYear(datetime(""2020-05-10""), datetime(""2024-01-01""), 1.7)
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(4, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 5, 10), dates[0]);
+            Assert.AreEqual(new DateTime(2021, 5, 10), dates[1]);
+            Assert.AreEqual(new DateTime(2022, 5, 10), dates[2]);
+            Assert.AreEqual(new DateTime(2023, 5, 10), dates[3]);
+        }
+
+        [Test]
+        public void RangeYear_WithStartEqualToEnd_ReturnsEmptyArray()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeYear(datetime(""2022-06-15""), datetime(""2022-06-15""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.AreEqual("[]", result.Trim());
+        }
+
+        [Test]
+        public void RangeMonth_AdjustsToLastDayOfMonth()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeMonth(datetime(""2020-01-31""), datetime(""2020-04-01""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(3, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 1, 31), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 2, 29), dates[1]); // Leap year 2020, February has 29 days
+            Assert.AreEqual(new DateTime(2020, 3, 31), dates[2]);
+        }
+
+        [Test]
+        public void RangeMonth_FromExample_MatchesExpectation()
+        {
+            // Arrange - Test from the requirement example
+            string template = @"{{ 
+                rangeMonth(datetime(""01-31-2020""), datetime(""08-01-2020""), 1.5)
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(7, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 1, 31), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 2, 29), dates[1]);  
+            Assert.AreEqual(new DateTime(2020, 3, 31), dates[2]);
+            Assert.AreEqual(new DateTime(2020, 4, 30), dates[3]);
+            Assert.AreEqual(new DateTime(2020, 5, 31), dates[4]);
+            Assert.AreEqual(new DateTime(2020, 6, 30), dates[5]);
+            Assert.AreEqual(new DateTime(2020, 7, 31), dates[6]);
+        }
+
+        [Test]
+        public void RangeDay_AcrossMonthBoundary_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeDay(datetime(""2020-02-28""), datetime(""2020-03-03""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(4, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 2, 28), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 2, 29), dates[1]); // Leap year
+            Assert.AreEqual(new DateTime(2020, 3, 1), dates[2]);
+            Assert.AreEqual(new DateTime(2020, 3, 2), dates[3]);
+        }
+
+        [Test]
+        public void RangeHour_AcrossDayBoundary_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeHour(datetime(""2020-03-15 22:00:00""), datetime(""2020-03-16 02:00:00""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(4, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 22, 0, 0), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 23, 0, 0), dates[1]);
+            Assert.AreEqual(new DateTime(2020, 3, 16, 0, 0, 0), dates[2]);
+            Assert.AreEqual(new DateTime(2020, 3, 16, 1, 0, 0), dates[3]);
+        }
+
+        [Test]
+        public void RangeMinute_WithCustomStep_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeMinute(datetime(""2020-03-15 10:00:00""), datetime(""2020-03-15 11:00:00""), 15)
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(4, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 0, 0), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 15, 0), dates[1]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 30, 0), dates[2]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 45, 0), dates[3]);
+        }
+
+        [Test]
+        public void RangeSecond_AcrossMinuteBoundary_GeneratesCorrectDateRange()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeSecond(datetime(""2020-03-15 10:00:58""), datetime(""2020-03-15 10:01:03""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(5, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 0, 58), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 0, 59), dates[1]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 1, 0), dates[2]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 1, 1), dates[3]);
+            Assert.AreEqual(new DateTime(2020, 3, 15, 10, 1, 2), dates[4]);
+        }
+
+        [Test]
+        public void RangeYear_FromExample_MatchesExpectation()
+        {
+            // Arrange - Test from the requirement example
+            string template = @"{{ 
+                rangeYear(datetime(""02-03-2020""), datetime(""04-01-2024""), 2)
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(3, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 2, 3), dates[0]);
+            Assert.AreEqual(new DateTime(2022, 2, 3), dates[1]);
+            Assert.AreEqual(new DateTime(2024, 2, 3), dates[2]);
+        }
+
+        [Test]
+        public void RangeMonth_FromSecondExample_MatchesExpectation()
+        {
+            // Arrange - Test from the second requirement example
+            string template = @"{{ 
+                rangeMonth(datetime(""02-03-2020""), datetime(""05-01-2020""))
+            }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            List<DateTime> dates = ParseDateTimeArray(result);
+            Assert.AreEqual(3, dates.Count);
+            Assert.AreEqual(new DateTime(2020, 2, 3), dates[0]);
+            Assert.AreEqual(new DateTime(2020, 3, 3), dates[1]);
+            Assert.AreEqual(new DateTime(2020, 4, 3), dates[2]);
+        }
+
+        [Test]
+        public void RangeYear_WithZeroStep_ThrowsException()
+        {
+            // Arrange
+            string template = @"{{ 
+                rangeYear(datetime(""2020-01-01""), datetime(""2022-01-01""), 0)
+            }}";
+
+            // Act & Assert
+            Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
+        }
+
+        [Test]
+        public void MultipleFunctionsInSameTemplate_WorkCorrectly()
+        {
+            // Arrange
+            string template = @"
+            Years: {{ rangeYear(datetime(""2020-01-01""), datetime(""2022-01-01"")) }}
+            Months: {{ rangeMonth(datetime(""2020-01-31""), datetime(""2020-04-01"")) }}
+            Days: {{ rangeDay(datetime(""2020-01-01""), datetime(""2020-01-05"")) }}
+            ";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            StringAssert.Contains("Years: [", result);
+            StringAssert.Contains("Months: [", result);
+            StringAssert.Contains("Days: [", result);
+            
+            // Verify the output contains valid date arrays
+            Assert.IsTrue(Regex.IsMatch(result, @"Years: \[\d{4}-\d{2}-\d{2}"));
+            Assert.IsTrue(Regex.IsMatch(result, @"Months: \[\d{4}-\d{2}-\d{2}"));
+            Assert.IsTrue(Regex.IsMatch(result, @"Days: \[\d{4}-\d{2}-\d{2}"));
+        }
+
+        private List<DateTime> ParseDateTimeArray(string output)
+        {
+            string cleanOutput = output.Trim();
+            
+            if (cleanOutput == "[]")
+                return new List<DateTime>();
+                
+            cleanOutput = cleanOutput.Trim('[', ']');
+            string[] dateStrings = cleanOutput.Split(',').Select(s => s.Trim()).ToArray();
+            
+            List<DateTime> result = new List<DateTime>();
+            foreach (string dateString in dateStrings)
+            {
+                if (DateTime.TryParse(dateString, out DateTime date))
+                {
+                    result.Add(date);
+                }
+                else
+                {
+                    string pattern = @"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})";
+                    var match = Regex.Match(dateString, pattern);
+                    if (match.Success)
+                    {
+                        int year = int.Parse(match.Groups[1].Value);
+                        int month = int.Parse(match.Groups[2].Value);
+                        int day = int.Parse(match.Groups[3].Value);
+                        int hour = int.Parse(match.Groups[4].Value);
+                        int minute = int.Parse(match.Groups[5].Value);
+                        int second = int.Parse(match.Groups[6].Value);
+                        
+                        result.Add(new DateTime(year, month, day, hour, minute, second));
+                    }
+                    else
+                    {
+                        throw new Exception($"Unable to parse date string: {dateString}");
+                    }
+                }
+            }
+            
+            return result;
         }
     }
 }

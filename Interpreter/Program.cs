@@ -2916,30 +2916,246 @@ namespace TemplateInterpreter
                     var start = Convert.ToDecimal(args[0]);
                     var end = Convert.ToDecimal(args[1]);
                     var step = Convert.ToDecimal(args[2]);
-                    
+
                     if (step == 0)
                     {
                         throw new Exception("range function requires a non-zero step value");
                     }
-                    
+
                     var result = new List<decimal>();
-                    
+
                     // Handle both positive and negative step values
                     if (step > 0)
                     {
-                        for (var value = start; value < end; value += step)
+                        for (var value = start + step - step; value < end; value += step)
                         {
                             result.Add(value);
                         }
                     }
                     else
                     {
-                        for (var value = start; value > end; value += step)
+                        for (var value = start + step - step; value > end; value += step)
                         {
                             result.Add(value);
                         }
                     }
-                    
+
+                    return result;
+                });
+
+            Register("rangeYear",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeYear function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeYear function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+                        current = current.AddYears(step);
+                    }
+
+                    return result;
+                });
+
+            Register("rangeMonth",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeMonth function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeMonth function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+                    var originalDay = current.Day;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+
+                        // Use AddMonths to get the next month
+                        var nextMonth = current.AddMonths(step);
+
+                        // Check if original day exists in the new month
+                        var daysInNextMonth = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
+                        var targetDay = Math.Min(originalDay, daysInNextMonth);
+
+                        // Create a new DateTime with the correct day
+                        current = new DateTime(nextMonth.Year, nextMonth.Month, targetDay,
+                                              current.Hour, current.Minute, current.Second,
+                                              current.Millisecond);
+                    }
+
+                    return result;
+                });
+
+            Register("rangeDay",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeDay function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeDay function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+                        current = current.AddDays(step);
+                    }
+
+                    return result;
+                });
+
+            Register("rangeHour",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeHour function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeHour function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+                        current = current.AddHours(step);
+                    }
+
+                    return result;
+                });
+
+            Register("rangeMinute",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeMinute function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeMinute function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+                        current = current.AddMinutes(step);
+                    }
+
+                    return result;
+                });
+
+            Register("rangeSecond",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(DateTime)),
+                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                },
+                args =>
+                {
+                    var start = args[0] as DateTime?;
+                    var end = args[1] as DateTime?;
+                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var step = (int)Math.Floor(stepDecimal);
+
+                    if (!start.HasValue || !end.HasValue)
+                        throw new Exception("rangeSecond function requires valid DateTime parameters");
+
+                    if (step <= 0)
+                        throw new Exception("rangeSecond function requires a positive step value");
+
+                    if (start >= end)
+                        return new List<DateTime>();
+
+                    var result = new List<DateTime>();
+                    var current = start.Value;
+
+                    while (current < end)
+                    {
+                        result.Add(current);
+                        current = current.AddSeconds(step);
+                    }
+
                     return result;
                 });
 
@@ -4229,36 +4445,40 @@ namespace TemplateInterpreter
             {
                 return evaluated.ToString();
             }
-            else if (evaluated is List<dynamic> array)
+            else if (
+                evaluated is List<dynamic> || 
+                evaluated is List<decimal> ||
+                evaluated is List<bool> ||
+                evaluated is List<string> ||
+                evaluated is List<char> ||
+                evaluated is List<DateTime> ||
+                evaluated is List<Uri>)
             {
-                return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item, true))), "]");
-            }
-            else if (evaluated is List<decimal> arrayDecimals)
-            {
-                return string.Concat("[", string.Join(", ", arrayDecimals.Select(item => FormatOutput(item, true))), "]");
-            }
-            else if (evaluated is List<bool> arrayBools)
-            {
-                return string.Concat("[", string.Join(", ", arrayBools.Select(item => FormatOutput(item, true))), "]");
-            }
-            else if (evaluated is List<string> arrayStrings)
-            {
-                return string.Concat("[", string.Join(", ", arrayStrings.Select(item => FormatOutput(item, true))), "]");
+                return FormatArrayOutput(evaluated);
             }
             else if (evaluated is IDictionary<string, object> dict)
             {
-                return string.Concat("{", 
+                return string.Concat("{",
                     string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key], true)))), "}");
             }
             else if (evaluated is ExpandoObject expando)
             {
-                return string.Concat("{", 
+                return string.Concat("{",
                     string.Join(", ", expando.Select(kvp => string.Concat(kvp.Key, ": ", FormatOutput(kvp.Value, true)))), "}");
+            }
+            else if (evaluated is Func<List<object>, object> func)
+            {
+                return "lambda()";
             }
             else
             {
-                return "{_object}";
+                return "object{}";
             }
+        }
+
+        public static string FormatArrayOutput<T>(List<T> array)
+        {
+            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item, true))), "]");
         }
 
         public static string JsonSerialize(dynamic evaluated)
@@ -4281,36 +4501,40 @@ namespace TemplateInterpreter
                 var serializer = new JavaScriptSerializer();
                 return serializer.Serialize(evaluated.ToString());
             }
-            else if (evaluated is List<dynamic> array)
+            else if (
+                evaluated is List<dynamic> || 
+                evaluated is List<decimal> ||
+                evaluated is List<bool> ||
+                evaluated is List<string> ||
+                evaluated is List<char> ||
+                evaluated is List<DateTime> ||
+                evaluated is List<Uri>)
             {
-                return string.Concat("[", string.Join(",", array.Select(item => JsonSerialize(item))), "]");
-            }
-            else if (evaluated is List<decimal> arrayDecimals)
-            {
-                return string.Concat("[", string.Join(",", arrayDecimals.Select(item => JsonSerialize(item))), "]");
-            }
-            else if (evaluated is List<bool> arrayBools)
-            {
-                return string.Concat("[", string.Join(",", arrayBools.Select(item => JsonSerialize(item))), "]");
-            }
-            else if (evaluated is List<string> arrayStrings)
-            {
-                return string.Concat("[", string.Join(",", arrayStrings.Select(item => JsonSerialize(item))), "]");
+                return JsonSerializeArray(evaluated);
             }
             else if (evaluated is IDictionary<string, object> dict)
             {
-                return string.Concat("{", 
+                return string.Concat("{",
                     string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
             }
             else if (evaluated is ExpandoObject expando)
             {
-                return string.Concat("{", 
+                return string.Concat("{",
                     string.Join(",", expando.Select(kvp => string.Concat("\"", kvp.Key, "\"", ":", JsonSerialize(kvp.Value)))), "}");
+            }
+            else if (evaluated is Func<List<object>, object> func)
+            {
+                return "\"lambda()\"";
             }
             else
             {
                 return $"\"{evaluated.ToString()}\"";
             }
+        }
+
+        public static string JsonSerializeArray<T>(List<T> array)
+        {
+            return string.Concat("[", string.Join(",", array.Select(item => JsonSerialize(item))), "]");
         }
 
         public static bool IsConvertibleToDecimal(dynamic value)
