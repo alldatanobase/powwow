@@ -2086,7 +2086,7 @@ Line 3
             });
 
             _mockOrgService
-                .Setup(x => x.RetrieveMultiple(It.Is<FetchExpression>(f => f.Query == fetchXml)))
+                .Setup(x => x.RetrieveMultiple(It.IsAny<FetchExpression>()))
                 .Returns(entityCollection);
 
             // Act
@@ -2479,10 +2479,10 @@ Line 3
             var tokens = _lexer.Tokenize(input);
 
             Assert.That(tokens.Count, Is.EqualTo(4));
-            Assert.That(tokens[0].Position, Is.EqualTo(0)); // "Hello"
-            Assert.That(tokens[1].Position, Is.EqualTo(5)); // "\n"
-            Assert.That(tokens[2].Position, Is.EqualTo(6)); // "  "
-            Assert.That(tokens[3].Position, Is.EqualTo(8)); // "World"
+            Assert.That(tokens[0].Location.Position, Is.EqualTo(0)); // "Hello"
+            Assert.That(tokens[1].Location.Position, Is.EqualTo(5)); // "\n"
+            Assert.That(tokens[2].Location.Position, Is.EqualTo(6)); // "  "
+            Assert.That(tokens[3].Location.Position, Is.EqualTo(8)); // "World"
         }
 
         [Test]

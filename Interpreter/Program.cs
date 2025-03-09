@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Net;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -428,17 +429,40 @@ namespace TemplateInterpreter
         }
     }
 
+    public class SourceLocation
+    {
+        public int Line { get; }
+        public int Column { get; }
+        public int Position { get; }
+        public string Source { get; }
+
+        public SourceLocation(int line, int column, int position, string source = null)
+        {
+            Line = line;
+            Column = column;
+            Position = position;
+            Source = source;
+        }
+
+        public override string ToString()
+        {
+            return Source != null
+                ? $"line {Line}, column {Column} in {Source}"
+                : $"line {Line}, column {Column}";
+        }
+    }
+
     public class Token
     {
         public TokenType Type { get; private set; }
         public string Value { get; private set; }
-        public int Position { get; private set; }
+        public SourceLocation Location { get; private set; }
 
-        public Token(TokenType type, string value, int position)
+        public Token(TokenType type, string value, SourceLocation location)
         {
             Type = type;
             Value = value;
-            Position = position;
+            Location = location;
         }
     }
 
@@ -501,31 +525,67 @@ namespace TemplateInterpreter
     {
         private string _input;
         private int _position;
+        private int _line;
+        private int _column;
         private readonly List<Token> _tokens;
+        private string _sourceName;
+
+        private struct PositionState
+        {
+            public int Position { get; set; }
+            public int Line { get; set; }
+            public int Column { get; set; }
+
+            public PositionState(int position, int line, int column)
+            {
+                Position = position;
+                Line = line;
+                Column = column;
+            }
+        }
+
+        private PositionState SavePosition()
+        {
+            return new PositionState(_position, _line, _column);
+        }
+
+        private void RestorePosition(PositionState state)
+        {
+            _position = state.Position;
+            _line = state.Line;
+            _column = state.Column;
+        }
 
         public Lexer()
         {
             _tokens = new List<Token>();
         }
 
-        public IReadOnlyList<Token> Tokenize(string input)
+        public IReadOnlyList<Token> Tokenize(string input, string sourceName = null)
         {
             _input = input;
             _position = 0;
+            _line = 1;
+            _column = 1;
             _tokens.Clear();
+
+            if (sourceName != null)
+            {
+                _sourceName = sourceName;
+            }
 
             while (_position < _input.Length)
             {
                 if (TryMatch("{{-"))
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveStart, "{{-", _position));
-                    _position += 3;
+                    AddToken(TokenType.DirectiveStart, "{{-");
+                    UpdatePositionAndTracking(3);
                     TokenizeDirective();
                 }
                 else if (TryMatch("{{"))
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveStart, "{{", _position));
-                    _position += 2;
+                    AddToken(TokenType.DirectiveStart, "{{");
+                    UpdatePositionAndTracking(2);
                     TokenizeDirective();
                 }
                 else if (IsNewline(_position))
@@ -551,21 +611,21 @@ namespace TemplateInterpreter
             {
                 if (TryMatch("*}}"))
                 {
-                    _tokens.Add(new Token(TokenType.CommentEnd, "*", _position));
-                    _position++; // Skip past "*"
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
-                    _position += 2; // Skip past "}}"
+                    AddToken(TokenType.CommentEnd, "*");
+                    UpdatePositionAndTracking(1); // Skip past "*"
+                    AddToken(TokenType.DirectiveEnd, "}}");
+                    UpdatePositionAndTracking(2); // Skip past "}}"
                     return;
                 }
                 else if (TryMatch("*-}}"))
                 {
-                    _tokens.Add(new Token(TokenType.CommentEnd, "*", _position));
-                    _position++; // Skip past "*"
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
-                    _position += 3; // Skip past "-}}"
+                    AddToken(TokenType.CommentEnd, "*");
+                    UpdatePositionAndTracking(1); // Skip past "*"
+                    AddToken(TokenType.DirectiveEnd, "-}}");
+                    UpdatePositionAndTracking(3); // Skip past "-}}"
                     return;
                 }
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
             throw new Exception("Unterminated comment");
@@ -575,8 +635,8 @@ namespace TemplateInterpreter
         {
             if (TryMatch("*"))
             {
-                _tokens.Add(new Token(TokenType.CommentStart, "*", _position));
-                _position++;
+                AddToken(TokenType.CommentStart, "*");
+                UpdatePositionAndTracking(1);
                 TokenizeComment();
                 return;
             }
@@ -585,8 +645,8 @@ namespace TemplateInterpreter
 
             if (TryMatch("literal"))
             {
-                _tokens.Add(new Token(TokenType.Literal, "literal", _position));
-                _position += 7;
+                AddToken(TokenType.Literal, "literal");
+                UpdatePositionAndTracking(7);
 
                 SkipWhitespace();
 
@@ -597,23 +657,23 @@ namespace TemplateInterpreter
 
                 if (TryMatch("}}"))
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
-                    _position += 2; // Skip }}
+                    AddToken(TokenType.DirectiveEnd, "}}");
+                    UpdatePositionAndTracking(2); // Skip }}
                 }
                 else
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
-                    _position += 3; // Skip -}}
+                    AddToken(TokenType.DirectiveEnd, "-}}");
+                    UpdatePositionAndTracking(3); // Skip -}}
                 }
 
                 // Capture everything until we find the closing literal directive
-                var contentStart = _position;
+                var startPosition = SavePosition();
                 var literalStackCount = 0;
 
                 while (_position < _input.Length)
                 {
                     int originalPosition = _position;
-                    int currentLookahead = _position;
+                    var savedPosition = SavePosition();
 
                     if (TryMatch("{{") || TryMatch("{{-"))
                     {
@@ -621,54 +681,54 @@ namespace TemplateInterpreter
 
                         if (TryMatch("{{"))
                         {
-                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{", currentLookahead);
-                            currentLookahead += 2 + WhitespaceCount(currentLookahead + 2);
+                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{", CreateLocation(savedPosition));
+                            savedPosition = UpdatePositionAndTrackingOnState(2 + WhitespaceCount(savedPosition.Position + 2), savedPosition);
                         }
                         else
                         {
-                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{-", currentLookahead);
-                            currentLookahead += 3 + WhitespaceCount(currentLookahead + 3);
+                            directiveStartToken = new Token(TokenType.DirectiveStart, "{{-", CreateLocation(savedPosition));
+                            savedPosition = UpdatePositionAndTrackingOnState(3 + WhitespaceCount(savedPosition.Position + 3), savedPosition);
                         }
 
-                        if (TryMatchAt("literal", currentLookahead))
+                        if (TryMatchAt("literal", savedPosition.Position))
                         {
-                            currentLookahead += 7 + WhitespaceCount(currentLookahead + 7);
+                            savedPosition = UpdatePositionAndTrackingOnState(7 + WhitespaceCount(savedPosition.Position + 7), savedPosition);
 
-                            if (TryMatchAt("}}", currentLookahead))
+                            if (TryMatchAt("}}", savedPosition.Position))
                             {
-                                currentLookahead += 2;
-                                _position += currentLookahead - originalPosition;
+                                savedPosition = UpdatePositionAndTrackingOnState(2, savedPosition);
+                                UpdatePositionAndTracking(savedPosition.Position - originalPosition);
                                 literalStackCount++;
                                 continue;
                             }
 
-                            if (TryMatchAt("-}}", currentLookahead))
+                            if (TryMatchAt("-}}", savedPosition.Position))
                             {
-                                currentLookahead += 3;
-                                _position += currentLookahead - originalPosition;
+                                savedPosition = UpdatePositionAndTrackingOnState(3, savedPosition);
+                                UpdatePositionAndTracking(savedPosition.Position - originalPosition);
                                 literalStackCount++;
                                 continue;
                             }
                         }
 
-                        if (TryMatchAt("/literal", currentLookahead))
+                        if (TryMatchAt("/literal", savedPosition.Position))
                         {
-                            var endLiteralToken = new Token(TokenType.EndLiteral, "/literal", currentLookahead);
-                            currentLookahead += 8 + WhitespaceCount(currentLookahead + 8);
+                            var endLiteralToken = new Token(TokenType.EndLiteral, "/literal", CreateLocation(savedPosition));
+                            savedPosition = UpdatePositionAndTrackingOnState(8 + WhitespaceCount(savedPosition.Position + 8), savedPosition);
 
-                            if (TryMatchAt("}}", currentLookahead) || TryMatchAt("-}}", currentLookahead))
+                            if (TryMatchAt("}}", savedPosition.Position) || TryMatchAt("-}}", savedPosition.Position))
                             {
                                 Token directiveEndToken = null;
 
-                                if (TryMatchAt("}}", currentLookahead))
+                                if (TryMatchAt("}}", savedPosition.Position))
                                 {
-                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "}}", currentLookahead);
-                                    currentLookahead += 2;
+                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "}}", CreateLocation(savedPosition));
+                                    savedPosition = UpdatePositionAndTrackingOnState(2, savedPosition);
                                 }
                                 else
                                 {
-                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "-}}", currentLookahead);
-                                    currentLookahead += 3;
+                                    directiveEndToken = new Token(TokenType.DirectiveEnd, "-}}", CreateLocation(savedPosition));
+                                    savedPosition = UpdatePositionAndTrackingOnState(3, savedPosition);
                                 }
 
                                 if (literalStackCount > 0)
@@ -678,19 +738,19 @@ namespace TemplateInterpreter
                                 else
                                 {
                                     // We found the end, create a token with the raw content
-                                    var content = _input.Substring(contentStart, _position - contentStart);
-                                    _tokens.Add(new Token(TokenType.Text, content, contentStart));
+                                    var content = _input.Substring(startPosition.Position, _position - startPosition.Position);
+                                    AddToken(TokenType.Text, content, startPosition);
                                     _tokens.Add(directiveStartToken);
                                     _tokens.Add(endLiteralToken);
                                     _tokens.Add(directiveEndToken);
-                                    _position += currentLookahead - originalPosition; // Skip {{/literal}} plus whitespace
+                                    UpdatePositionAndTracking(savedPosition.Position - originalPosition); // Skip {{/literal}} plus whitespace
                                     return;
                                 }
                             }
                         }
                     }
 
-                    _position++;
+                    UpdatePositionAndTracking(1);
                 }
 
                 throw new Exception("Unterminated literal directive");
@@ -702,64 +762,64 @@ namespace TemplateInterpreter
 
                 if (TryMatch("}}"))
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "}}", _position));
-                    _position += 2;
+                    AddToken(TokenType.DirectiveEnd, "}}");
+                    UpdatePositionAndTracking(2);
                     return;
                 }
 
                 if (TryMatch("-}}"))
                 {
-                    _tokens.Add(new Token(TokenType.DirectiveEnd, "-}}", _position));
-                    _position += 3;
+                    AddToken(TokenType.DirectiveEnd, "-}}");
+                    UpdatePositionAndTracking(3);
                     return;
                 }
 
                 if (TryMatch(","))
                 {
-                    _tokens.Add(new Token(TokenType.Comma, ",", _position));
-                    _position++;
+                    AddToken(TokenType.Comma, ",");
+                    UpdatePositionAndTracking(1);
                     continue;
                 }
 
                 if (TryMatch("=>"))
                 {
-                    _tokens.Add(new Token(TokenType.Arrow, "=>", _position));
-                    _position += 2;
+                    AddToken(TokenType.Arrow, "=>");
+                    UpdatePositionAndTracking(2);
                     continue;
                 }
 
                 if (TryMatch("obj("))
                 {
-                    _tokens.Add(new Token(TokenType.ObjectStart, "obj(", _position));
-                    _position += 4;
+                    AddToken(TokenType.ObjectStart, "obj(");
+                    UpdatePositionAndTracking(4);
                     continue;
                 }
 
                 if (TryMatch(":"))
                 {
-                    _tokens.Add(new Token(TokenType.Colon, ":", _position));
-                    _position++;
+                    AddToken(TokenType.Colon, ":");
+                    UpdatePositionAndTracking(1);
                     continue;
                 }
 
                 if (TryMatch("."))
                 {
-                    _tokens.Add(new Token(TokenType.Dot, ".", _position));
-                    _position++;
+                    AddToken(TokenType.Dot, ".");
+                    UpdatePositionAndTracking(1);
                     continue;
                 }
 
                 if (TryMatch("["))
                 {
-                    _tokens.Add(new Token(TokenType.LeftBracket, "[", _position));
-                    _position++;
+                    AddToken(TokenType.LeftBracket, "[");
+                    UpdatePositionAndTracking(1);
                     continue;
                 }
 
                 if (TryMatch("]"))
                 {
-                    _tokens.Add(new Token(TokenType.RightBracket, "]", _position));
-                    _position++;
+                    AddToken(TokenType.RightBracket, "]");
+                    UpdatePositionAndTracking(1);
                     continue;
                 }
 
@@ -769,171 +829,175 @@ namespace TemplateInterpreter
                     _position < _input.Length &&
                     (char.IsLetter(_input[_position]) || _input[_position] == '_'))
                 {
-                    var start = _position;
+                    var savedState = SavePosition();
+
                     while (_position < _input.Length &&
                            (char.IsLetterOrDigit(_input[_position]) || _input[_position] == '_'))
                     {
-                        _position++;
+                        UpdatePositionAndTracking(1);
                     }
-                    var fieldName = _input.Substring(start, _position - start);
-                    _tokens.Add(new Token(TokenType.Field, fieldName, start));
+
+                    var fieldName = _input.Substring(savedState.Position, _position - savedState.Position);
+                    AddToken(TokenType.Field, fieldName, savedState);
                     continue;
                 }
 
                 // Check for function names before other identifiers
                 if (char.IsLetter(_input[_position]))
                 {
-                    var start = _position;
+                    var savedPosition = SavePosition();
+
                     while (_position < _input.Length && char.IsLetter(_input[_position]))
                     {
-                        _position++;
+                        UpdatePositionAndTracking(1);
                     }
 
-                    var value = _input.Substring(start, _position - start);
+                    var value = _input.Substring(savedPosition.Position, _position - savedPosition.Position);
 
                     // Look ahead for opening parenthesis to distinguish functions from variables
                     SkipWhitespace();
+
                     if (_position < _input.Length && _input[_position] == '(')
                     {
-                        _tokens.Add(new Token(TokenType.Function, value, start));
+                        AddToken(TokenType.Function, value, savedPosition);
                         continue;
                     }
                     else
                     {
                         // Rewind position as this is not a function
-                        _position = start;
+                        RestorePosition(savedPosition);
                     }
                 }
 
                 // Match keywords and operators
                 if (TryMatch("let"))
                 {
-                    _tokens.Add(new Token(TokenType.Let, "let", _position));
-                    _position += 3;
+                    AddToken(TokenType.Let, "let");
+                    UpdatePositionAndTracking(3);
                     continue;
                 }
                 else if (TryMatch("capture"))
                 {
-                    _tokens.Add(new Token(TokenType.Capture, "capture", _position));
-                    _position += 7;
+                    AddToken(TokenType.Capture, "capture");
+                    UpdatePositionAndTracking(7);
                     continue;
                 }
                 else if (TryMatch("/capture"))
                 {
-                    _tokens.Add(new Token(TokenType.EndCapture, "/capture", _position));
-                    _position += 8;
+                    AddToken(TokenType.EndCapture, "/capture");
+                    UpdatePositionAndTracking(8);
                     continue;
                 }
                 else if (TryMatch("for"))
                 {
-                    _tokens.Add(new Token(TokenType.For, "for", _position));
-                    _position += 3;
+                    AddToken(TokenType.For, "for");
+                    UpdatePositionAndTracking(3);
                 }
                 else if (TryMatch("include"))
                 {
-                    _tokens.Add(new Token(TokenType.Include, "include", _position));
-                    _position += 7;
+                    AddToken(TokenType.Include, "include");
+                    UpdatePositionAndTracking(7);
                     continue;
                 }
                 else if (TryMatch("if"))
                 {
-                    _tokens.Add(new Token(TokenType.If, "if", _position));
-                    _position += 2;
+                    AddToken(TokenType.If, "if");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("elseif"))
                 {
-                    _tokens.Add(new Token(TokenType.ElseIf, "elseif", _position));
-                    _position += 6;
+                    AddToken(TokenType.ElseIf, "elseif");
+                    UpdatePositionAndTracking(6);
                 }
                 else if (TryMatch("else"))
                 {
-                    _tokens.Add(new Token(TokenType.Else, "else", _position));
-                    _position += 4;
+                    AddToken(TokenType.Else, "else");
+                    UpdatePositionAndTracking(4);
                 }
                 else if (TryMatch("/for"))
                 {
-                    _tokens.Add(new Token(TokenType.EndFor, "/for", _position));
-                    _position += 4;
+                    AddToken(TokenType.EndFor, "/for");
+                    UpdatePositionAndTracking(4);
                 }
                 else if (TryMatch("/if"))
                 {
-                    _tokens.Add(new Token(TokenType.EndIf, "/if", _position));
-                    _position += 3;
+                    AddToken(TokenType.EndIf, "/if");
+                    UpdatePositionAndTracking(3);
                 }
                 else if (TryMatch(">="))
                 {
-                    _tokens.Add(new Token(TokenType.GreaterThanEqual, ">=", _position));
-                    _position += 2;
+                    AddToken(TokenType.GreaterThanEqual, ">=");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("<="))
                 {
-                    _tokens.Add(new Token(TokenType.LessThanEqual, "<=", _position));
-                    _position += 2;
+                    AddToken(TokenType.LessThanEqual, "<=");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("=="))
                 {
-                    _tokens.Add(new Token(TokenType.Equal, "==", _position));
-                    _position += 2;
+                    AddToken(TokenType.Equal, "==");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("="))
                 {
-                    _tokens.Add(new Token(TokenType.Assignment, "=", _position));
-                    _position++;
+                    AddToken(TokenType.Assignment, "=");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("!="))
                 {
-                    _tokens.Add(new Token(TokenType.NotEqual, "!=", _position));
-                    _position += 2;
+                    AddToken(TokenType.NotEqual, "!=");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("&&"))
                 {
-                    _tokens.Add(new Token(TokenType.And, "&&", _position));
-                    _position += 2;
+                    AddToken(TokenType.And, "&&");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch("||"))
                 {
-                    _tokens.Add(new Token(TokenType.Or, "||", _position));
-                    _position += 2;
+                    AddToken(TokenType.Or, "||");
+                    UpdatePositionAndTracking(2);
                 }
                 else if (TryMatch(">"))
                 {
-                    _tokens.Add(new Token(TokenType.GreaterThan, ">", _position));
-                    _position++;
+                    AddToken(TokenType.GreaterThan, ">");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("<"))
                 {
-                    _tokens.Add(new Token(TokenType.LessThan, "<", _position));
-                    _position++;
+                    AddToken(TokenType.LessThan, "<");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("!"))
                 {
-                    _tokens.Add(new Token(TokenType.Not, "!", _position));
-                    _position++;
+                    AddToken(TokenType.Not, "!");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("+"))
                 {
-                    _tokens.Add(new Token(TokenType.Plus, "+", _position));
-                    _position++;
+                    AddToken(TokenType.Plus, "+");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("*"))
                 {
-                    _tokens.Add(new Token(TokenType.Multiply, "*", _position));
-                    _position++;
+                    AddToken(TokenType.Multiply, "*");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("/"))
                 {
-                    _tokens.Add(new Token(TokenType.Divide, "/", _position));
-                    _position++;
+                    AddToken(TokenType.Divide, "/");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("("))
                 {
-                    _tokens.Add(new Token(TokenType.LeftParen, "(", _position));
-                    _position++;
+                    AddToken(TokenType.LeftParen, "(");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch(")"))
                 {
-                    _tokens.Add(new Token(TokenType.RightParen, ")", _position));
-                    _position++;
+                    AddToken(TokenType.RightParen, ")");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (TryMatch("\""))
                 {
@@ -945,8 +1009,8 @@ namespace TemplateInterpreter
                 }
                 else if (TryMatch("-"))
                 {
-                    _tokens.Add(new Token(TokenType.Minus, "-", _position));
-                    _position++;
+                    AddToken(TokenType.Minus, "-");
+                    UpdatePositionAndTracking(1);
                 }
                 else if (char.IsLetter(_input[_position]) || _input[_position] == '_')
                 {
@@ -961,45 +1025,41 @@ namespace TemplateInterpreter
 
         private void TokenizeText()
         {
-            var start = _position;
+            var savedPosition = SavePosition();
 
             while (_position < _input.Length &&
                    !TryMatch("{{") &&
                    !IsNewline(_position) &&
                    !IsWhitespace(_position))
             {
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
-            if (_position > start)
+            if (_position > savedPosition.Position)
             {
-                _tokens.Add(new Token(TokenType.Text,
-                    _input.Substring(start, _position - start),
-                    start));
+                AddToken(TokenType.Text, _input.Substring(savedPosition.Position, _position - savedPosition.Position), savedPosition);
             }
         }
 
         private void TokenizeWhitespace()
         {
-            var start = _position;
+            var savedPosition = SavePosition();
 
             while (_position < _input.Length &&
                    IsWhitespace(_position))
             {
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
-            if (_position > start)
+            if (_position > savedPosition.Position)
             {
-                _tokens.Add(new Token(TokenType.Whitespace,
-                    _input.Substring(start, _position - start),
-                    start));
+                AddToken(TokenType.Whitespace, _input.Substring(savedPosition.Position, _position - savedPosition.Position), savedPosition);
             }
         }
 
         private void TokenizeNewline()
         {
-            var start = _position;
+            var savedPosition = SavePosition();
             string newlineValue;
 
             if (_input[_position] == '\r' &&
@@ -1007,15 +1067,15 @@ namespace TemplateInterpreter
                 _input[_position + 1] == '\n')
             {
                 newlineValue = "\r\n";
-                _position += 2;
+                UpdatePositionAndTracking(2);
             }
             else
             {
                 newlineValue = _input[_position] == '\r' ? "\r" : "\n";
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
-            _tokens.Add(new Token(TokenType.Newline, newlineValue, start));
+            AddToken(TokenType.Newline, newlineValue, savedPosition);
         }
 
         private bool IsNewline(int pos)
@@ -1037,8 +1097,9 @@ namespace TemplateInterpreter
 
         private void TokenizeString()
         {
-            _position++; // Skip opening quote
+            UpdatePositionAndTracking(1); // Skip opening quote
             var result = new StringBuilder();
+            var savedPosition = SavePosition();
 
             while (_position < _input.Length && _input[_position] != '"')
             {
@@ -1066,12 +1127,12 @@ namespace TemplateInterpreter
                         default:
                             throw new Exception($"Invalid escape sequence '\\{nextChar}' at position {_position}");
                     }
-                    _position += 2; // Skip both the backslash and the escaped character
+                    UpdatePositionAndTracking(2); // Skip both the backslash and the escaped character
                 }
                 else
                 {
                     result.Append(_input[_position]);
-                    _position++;
+                    UpdatePositionAndTracking(1);
                 }
             }
 
@@ -1080,18 +1141,18 @@ namespace TemplateInterpreter
                 throw new Exception("Unterminated string literal");
             }
 
-            _tokens.Add(new Token(TokenType.String, result.ToString(), _position - result.Length - 1));
-            _position++; // Skip closing quote
+            AddToken(TokenType.String, result.ToString(), savedPosition);
+            UpdatePositionAndTracking(1); // Skip closing quote
         }
 
         private void TokenizeNumber()
         {
-            var start = _position;
+            var savedPosition = SavePosition();
             bool hasDecimal = false;
 
             if (_input[_position] == '-')
             {
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
             while (_position < _input.Length &&
@@ -1102,37 +1163,39 @@ namespace TemplateInterpreter
                 {
                     hasDecimal = true;
                 }
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
-            var value = _input.Substring(start, _position - start);
-            _tokens.Add(new Token(TokenType.Number, value, start));
+            var value = _input.Substring(savedPosition.Position, _position - savedPosition.Position);
+            AddToken(TokenType.Number, value, savedPosition);
         }
 
         private void TokenizeIdentifier()
         {
-            var start = _position;
+            var savedPosition = SavePosition();
+
             while (_position < _input.Length &&
                    (char.IsLetterOrDigit(_input[_position]) ||
                     _input[_position] == '_'))
             {
-                _position++;
+                UpdatePositionAndTracking(1);
             }
 
-            var value = _input.Substring(start, _position - start);
+            var value = _input.Substring(savedPosition.Position, _position - savedPosition.Position);
+
             switch (value)
             {
                 case "true":
-                    _tokens.Add(new Token(TokenType.True, value, start));
+                    AddToken(TokenType.True, value, savedPosition);
                     break;
                 case "false":
-                    _tokens.Add(new Token(TokenType.False, value, start));
+                    AddToken(TokenType.False, value, savedPosition);
                     break;
                 case "in":
-                    _tokens.Add(new Token(TokenType.In, value, start));
+                    AddToken(TokenType.In, value, savedPosition);
                     break;
                 default:
-                    _tokens.Add(new Token(TokenType.Variable, value, start));
+                    AddToken(TokenType.Variable, value, savedPosition);
                     break;
             }
         }
@@ -1141,7 +1204,7 @@ namespace TemplateInterpreter
         {
             while (_position < _input.Length && char.IsWhiteSpace(_input[_position]))
             {
-                _position++;
+                UpdatePositionAndTracking(1);
             }
         }
 
@@ -1154,6 +1217,66 @@ namespace TemplateInterpreter
                 currentPosition++;
             }
             return currentPosition - originalPosition;
+        }
+
+        private PositionState UpdatePositionAndTrackingOnState(int distance, PositionState state)
+        {
+            // For each character we're skipping, update line and column
+            for (int i = 0; i < distance && state.Position < _input.Length; i++)
+            {
+                if (_input[state.Position] == '\n')
+                {
+                    state.Line++;
+                    state.Column = 1;
+                }
+                else if (_input[state.Position] == '\r')
+                {
+                    // Handle Windows-style \r\n newlines
+                    if (state.Position + 1 < _input.Length && _input[state.Position + 1] == '\n')
+                    {
+                        i++; // Skip the next character too
+                        state.Position++; // Move past \r
+                    }
+                    state.Line++;
+                    state.Column = 1;
+                }
+                else
+                {
+                    state.Column++;
+                }
+                state.Position++;
+            }
+
+            return state;
+        }
+
+        private void UpdatePositionAndTracking(int distance)
+        {
+            // For each character we're skipping, update line and column
+            for (int i = 0; i < distance && _position < _input.Length; i++)
+            {
+                if (_input[_position] == '\n')
+                {
+                    _line++;
+                    _column = 1;
+                }
+                else if (_input[_position] == '\r')
+                {
+                    // Handle Windows-style \r\n newlines
+                    if (_position + 1 < _input.Length && _input[_position + 1] == '\n')
+                    {
+                        i++; // Skip the next character too
+                        _position++; // Move past \r
+                    }
+                    _line++;
+                    _column = 1;
+                }
+                else
+                {
+                    _column++;
+                }
+                _position++;
+            }
         }
 
         private bool TryMatch(string pattern)
@@ -1179,6 +1302,26 @@ namespace TemplateInterpreter
         private char PeekNext()
         {
             return _position + 1 < _input.Length ? _input[_position + 1] : '\0';
+        }
+
+        private SourceLocation CreateLocation()
+        {
+            return new SourceLocation(_line, _column, _position, _sourceName);
+        }
+
+        private SourceLocation CreateLocation(PositionState savedState)
+        {
+            return new SourceLocation(savedState.Line, savedState.Column, savedState.Position, _sourceName);
+        }
+
+        private void AddToken(TokenType type, string value)
+        {
+            _tokens.Add(new Token(type, value, CreateLocation()));
+        }
+
+        private void AddToken(TokenType type, string value, PositionState savedState)
+        {
+            _tokens.Add(new Token(type, value, CreateLocation(savedState)));
         }
     }
 
@@ -2117,7 +2260,7 @@ namespace TemplateInterpreter
                     {
                         if (_position == 0)
                         {
-                            throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
+                            throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
                         }
                         // We've hit a closing directive - return control to the parent parser
                         break;
@@ -2129,7 +2272,7 @@ namespace TemplateInterpreter
                 }
                 else
                 {
-                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
+                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
                 }
             }
 
@@ -2287,7 +2430,7 @@ namespace TemplateInterpreter
                 {
                     if (Current().Type != TokenType.Variable && Current().Type != TokenType.Parameter)
                     {
-                        throw new Exception($"Expected parameter name but got {Current().Type} at position {Current().Position}");
+                        throw new Exception($"Expected parameter name but got {Current().Type} at position {Current().Location.Position}");
                     }
 
                     parameters.Add(Current().Value);
@@ -2330,7 +2473,7 @@ namespace TemplateInterpreter
 
                 if (Current().Type != TokenType.Comma)
                 {
-                    throw new Exception($"Expected comma after statement at position {Current().Position}");
+                    throw new Exception($"Expected comma after statement at position {Current().Location.Position}");
                 }
                 Advance(); // Skip comma
             }
@@ -2347,20 +2490,20 @@ namespace TemplateInterpreter
                 // Parse field name
                 if (Current().Type != TokenType.Variable)
                 {
-                    throw new Exception($"Expected field name but got {Current().Type} at position {Current().Position}");
+                    throw new Exception($"Expected field name but got {Current().Type} at position {Current().Location.Position}");
                 }
 
                 var fieldName = Current().Value;
                 if (fields.Any(f => f.Key == fieldName))
                 {
-                    throw new Exception($"Duplicate field name '{fieldName}' defined at position {Current().Position}");
+                    throw new Exception($"Duplicate field name '{fieldName}' defined at position {Current().Location.Position}");
                 }
                 Advance();
 
                 // Parse colon
                 if (Current().Type != TokenType.Colon)
                 {
-                    throw new Exception($"Expected ':' but got {Current().Type} at position {Current().Position}");
+                    throw new Exception($"Expected ':' but got {Current().Type} at position {Current().Location.Position}");
                 }
                 Advance();
 
@@ -2381,7 +2524,7 @@ namespace TemplateInterpreter
                 }
                 else
                 {
-                    throw new Exception($"Expected ',' or ')' but got {Current().Type} at position {Current().Position}");
+                    throw new Exception($"Expected ',' or ')' but got {Current().Type} at position {Current().Location.Position}");
                 }
             }
 
@@ -2417,7 +2560,7 @@ namespace TemplateInterpreter
 
                 if (Current().Type != TokenType.Comma)
                 {
-                    throw new Exception($"Expected ',' or ']' but got {Current().Type} at position {Current().Position}");
+                    throw new Exception($"Expected ',' or ']' but got {Current().Type} at position {Current().Location.Position}");
                 }
 
                 Advance(); // Skip comma
@@ -2662,7 +2805,7 @@ namespace TemplateInterpreter
                     break;
 
                 default:
-                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Position));
+                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
             }
 
             // Handle any invocations that follow the primary expression
@@ -2678,7 +2821,7 @@ namespace TemplateInterpreter
                 var fieldToken = Current();
                 if (fieldToken.Type != TokenType.Field && fieldToken.Type != TokenType.Variable)
                 {
-                    throw new Exception($"Expected field name but got {fieldToken.Type} at position {fieldToken.Position}");
+                    throw new Exception($"Expected field name but got {fieldToken.Type} at position {fieldToken.Location.Position}");
                 }
                 expr = new FieldAccessNode(expr, fieldToken.Value);
                 Advance();
@@ -2816,7 +2959,7 @@ namespace TemplateInterpreter
             var token = Current();
             if (token.Type != type)
             {
-                throw new Exception(string.Format("Expected {0} but got {1} at position {2}", type, token.Type, token.Position));
+                throw new Exception(string.Format("Expected {0} but got {1} at position {2}", type, token.Type, token.Location.Position));
             }
             return token;
         }
