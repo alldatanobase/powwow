@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Net;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -109,7 +108,7 @@ namespace TemplateInterpreter
             if (node is TemplateNode templateNode)
             {
                 var processedChildren = templateNode.Children.Select(ProcessIncludes).ToList();
-                return new TemplateNode(processedChildren);
+                return new TemplateNode(processedChildren, node.Location);
             }
 
             // Handle IfNode
@@ -118,14 +117,14 @@ namespace TemplateInterpreter
                 var processedBranches = ifNode.ConditionalBranches.Select(branch =>
                     new IfNode.IfBranch(branch.Condition, ProcessIncludes(branch.Body))).ToList();
                 var processedElse = ifNode.ElseBranch != null ? ProcessIncludes(ifNode.ElseBranch) : null;
-                return new IfNode(processedBranches, processedElse);
+                return new IfNode(processedBranches, processedElse, node.Location);
             }
 
             // Handle ForNode
             if (node is ForNode forNode)
             {
                 var processedBody = ProcessIncludes(forNode.Body);
-                return new ForNode(forNode.IteratorName, forNode.Collection, processedBody);
+                return new ForNode(forNode.IteratorName, forNode.Collection, processedBody, node.Location);
             }
 
             // For all other node types, return as is
@@ -1346,6 +1345,13 @@ namespace TemplateInterpreter
 
     public abstract class AstNode
     {
+        public SourceLocation Location { get; }
+
+        protected AstNode(SourceLocation location)
+        {
+            Location = location;
+        }
+
         public abstract dynamic Evaluate(ExecutionContext context);
 
         public override string ToString()
@@ -1358,7 +1364,7 @@ namespace TemplateInterpreter
     {
         private readonly string _content;
 
-        public LiteralNode(string content)
+        public LiteralNode(string content, SourceLocation location) : base(location)
         {
             _content = content;
         }
@@ -1379,7 +1385,7 @@ namespace TemplateInterpreter
         private readonly string _templateName;
         private AstNode _includedTemplate;
 
-        public IncludeNode(string templateName)
+        public IncludeNode(string templateName, SourceLocation location) : base(location)
         {
             _templateName = templateName;
             _includedTemplate = null;
@@ -1412,7 +1418,7 @@ namespace TemplateInterpreter
     {
         private readonly string _text;
 
-        public TextNode(string text)
+        public TextNode(string text, SourceLocation location) : base(location)
         {
             _text = text;
         }
@@ -1432,7 +1438,7 @@ namespace TemplateInterpreter
     {
         private readonly string _text;
 
-        public WhitespaceNode(string text)
+        public WhitespaceNode(string text, SourceLocation location) : base(location)
         {
             _text = text;
         }
@@ -1452,7 +1458,7 @@ namespace TemplateInterpreter
     {
         private readonly string _text;
 
-        public NewlineNode(string text)
+        public NewlineNode(string text, SourceLocation location) : base(location)
         {
             _text = text;
         }
@@ -1473,7 +1479,7 @@ namespace TemplateInterpreter
         private readonly AstNode _callable;
         private readonly List<AstNode> _arguments;
 
-        public InvocationNode(AstNode callable, List<AstNode> arguments)
+        public InvocationNode(AstNode callable, List<AstNode> arguments, SourceLocation location) : base(location)
         {
             _callable = callable;
             _arguments = arguments;
@@ -1613,7 +1619,7 @@ namespace TemplateInterpreter
     {
         private readonly string _functionName;
 
-        public FunctionReferenceNode(string functionName)
+        public FunctionReferenceNode(string functionName, SourceLocation location) : base(location)
         {
             _functionName = functionName;
         }
@@ -1639,7 +1645,8 @@ namespace TemplateInterpreter
             List<string> parameters,
             List<KeyValuePair<string, AstNode>> statements,
             AstNode finalExpression,
-            FunctionRegistry functionRegistry)
+            FunctionRegistry functionRegistry,
+            SourceLocation location) : base(location)
         {
             // Validate parameter names against function registry
             var seenParams = new HashSet<string>();
@@ -1712,7 +1719,7 @@ namespace TemplateInterpreter
         private readonly string _variableName;
         private readonly AstNode _expression;
 
-        public LetNode(string variableName, AstNode expression)
+        public LetNode(string variableName, AstNode expression, SourceLocation location) : base(location)
         {
             _variableName = variableName;
             _expression = expression;
@@ -1736,7 +1743,7 @@ namespace TemplateInterpreter
         private readonly string _variableName;
         private readonly AstNode _body;
 
-        public CaptureNode(string variableName, AstNode body)
+        public CaptureNode(string variableName, AstNode body, SourceLocation location) : base(location)
         {
             _variableName = variableName;
             _body = body;
@@ -1759,7 +1766,7 @@ namespace TemplateInterpreter
     {
         private readonly List<KeyValuePair<string, AstNode>> _fields;
 
-        public ObjectCreationNode(List<KeyValuePair<string, AstNode>> fields)
+        public ObjectCreationNode(List<KeyValuePair<string, AstNode>> fields, SourceLocation location) : base(location)
         {
             _fields = fields;
         }
@@ -1789,7 +1796,7 @@ namespace TemplateInterpreter
         private readonly AstNode _object;
         private readonly string _fieldName;
 
-        public FieldAccessNode(AstNode obj, string fieldName)
+        public FieldAccessNode(AstNode obj, string fieldName, SourceLocation location) : base(location)
         {
             _object = obj;
             _fieldName = fieldName;
@@ -1840,7 +1847,7 @@ namespace TemplateInterpreter
     {
         private readonly List<AstNode> _elements;
 
-        public ArrayNode(List<AstNode> elements)
+        public ArrayNode(List<AstNode> elements, SourceLocation location) : base(location)
         {
             _elements = elements;
         }
@@ -1861,7 +1868,7 @@ namespace TemplateInterpreter
     {
         private readonly string _path;
 
-        public VariableNode(string path)
+        public VariableNode(string path, SourceLocation location) : base(location)
         {
             _path = path;
         }
@@ -1881,7 +1888,7 @@ namespace TemplateInterpreter
     {
         private readonly string _value;
 
-        public StringNode(string value)
+        public StringNode(string value, SourceLocation location) : base(location)
         {
             _value = value;
         }
@@ -1901,7 +1908,7 @@ namespace TemplateInterpreter
     {
         private readonly decimal _value;
 
-        public NumberNode(string value)
+        public NumberNode(string value, SourceLocation location) : base(location)
         {
             _value = decimal.Parse(value);
         }
@@ -1921,7 +1928,7 @@ namespace TemplateInterpreter
     {
         private readonly bool _value;
 
-        public BooleanNode(bool value)
+        public BooleanNode(bool value, SourceLocation location) : base(location)
         {
             _value = value;
         }
@@ -1942,7 +1949,7 @@ namespace TemplateInterpreter
         private readonly TokenType _operator;
         private readonly AstNode _expression;
 
-        public UnaryNode(TokenType op, AstNode expression)
+        public UnaryNode(TokenType op, AstNode expression, SourceLocation location) : base(location)
         {
             _operator = op;
             _expression = expression;
@@ -1973,7 +1980,7 @@ namespace TemplateInterpreter
         private readonly AstNode _left;
         private readonly AstNode _right;
 
-        public BinaryNode(TokenType op, AstNode left, AstNode right)
+        public BinaryNode(TokenType op, AstNode left, AstNode right, SourceLocation location) : base(location)
         {
             _operator = op;
             _left = left;
@@ -2042,7 +2049,7 @@ namespace TemplateInterpreter
 
         public AstNode Body { get { return _body; } }
 
-        public ForNode(string iteratorName, AstNode collection, AstNode body)
+        public ForNode(string iteratorName, AstNode collection, AstNode body, SourceLocation location) : base(location)
         {
             _iteratorName = iteratorName;
             _collection = collection;
@@ -2100,7 +2107,7 @@ namespace TemplateInterpreter
             }
         }
 
-        public IfNode(List<IfBranch> conditionalBranches, AstNode elseBranch)
+        public IfNode(List<IfBranch> conditionalBranches, AstNode elseBranch, SourceLocation location) : base(location)
         {
             _conditionalBranches = conditionalBranches;
             _elseBranch = elseBranch;
@@ -2140,7 +2147,7 @@ namespace TemplateInterpreter
     {
         private readonly List<AstNode> _children;
 
-        public TemplateNode(List<AstNode> children)
+        public TemplateNode(List<AstNode> children, SourceLocation location) : base(location)
         {
             _children = children;
         }
@@ -2185,6 +2192,7 @@ namespace TemplateInterpreter
         private AstNode ParseTemplate()
         {
             var nodes = new List<AstNode>();
+            var startLocation = _tokens[0]?.Location;
 
             while (_position < _tokens.Count)
             {
@@ -2192,7 +2200,7 @@ namespace TemplateInterpreter
 
                 if (token.Type == TokenType.Text)
                 {
-                    nodes.Add(new TextNode(token.Value));
+                    nodes.Add(new TextNode(token.Value, token.Location));
                     Advance();
                 }
                 else if (token.Type == TokenType.Whitespace)
@@ -2203,7 +2211,7 @@ namespace TemplateInterpreter
                     }
                     else
                     {
-                        nodes.Add(new WhitespaceNode(token.Value));
+                        nodes.Add(new WhitespaceNode(token.Value, token.Location));
                         Advance();
                     }
                 }
@@ -2215,7 +2223,7 @@ namespace TemplateInterpreter
                     }
                     else
                     {
-                        nodes.Add(new NewlineNode(token.Value));
+                        nodes.Add(new NewlineNode(token.Value, token.Location));
                         Advance();
                     }
                 }
@@ -2276,7 +2284,7 @@ namespace TemplateInterpreter
                 }
             }
 
-            return new TemplateNode(nodes);
+            return new TemplateNode(nodes, startLocation ?? null);
         }
 
         private void ParseComment()
@@ -2294,6 +2302,7 @@ namespace TemplateInterpreter
         private AstNode ParseLetStatement()
         {
             Advance(); // Skip {{
+            var token = Current();
             Advance(); // Skip let
 
             var variableName = Expect(TokenType.Variable).Value;
@@ -2307,12 +2316,13 @@ namespace TemplateInterpreter
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new LetNode(variableName, expression);
+            return new LetNode(variableName, expression, token.Location);
         }
 
         private AstNode ParseCaptureStatement()
         {
             Advance(); // Skip {{
+            var token = Current();
             Advance(); // Skip capture
 
             var variableName = Expect(TokenType.Variable).Value;
@@ -2331,12 +2341,13 @@ namespace TemplateInterpreter
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new CaptureNode(variableName, body);
+            return new CaptureNode(variableName, body, token.Location);
         }
 
         private AstNode ParseLiteralStatement()
         {
             Advance(); // Skip {{
+            var token = Current();
             Advance(); // Skip literal
 
             Expect(TokenType.DirectiveEnd);
@@ -2355,12 +2366,13 @@ namespace TemplateInterpreter
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new LiteralNode(content);
+            return new LiteralNode(content, token.Location);
         }
 
         private AstNode ParseIncludeStatement()
         {
             Advance(); // Skip {{
+            var token = Current();
             Advance(); // Skip include
 
             var templateName = Expect(TokenType.Variable).Value;
@@ -2369,7 +2381,7 @@ namespace TemplateInterpreter
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new IncludeNode(templateName);
+            return new IncludeNode(templateName, token.Location);
         }
 
         private AstNode ParseExpressionStatement()
@@ -2392,6 +2404,7 @@ namespace TemplateInterpreter
 
         private AstNode ParseInvocation(AstNode callable)
         {
+            var token = Current();
             Advance(); // Skip (
             var arguments = new List<AstNode>();
 
@@ -2412,12 +2425,13 @@ namespace TemplateInterpreter
             Expect(TokenType.RightParen);
             Advance();
 
-            return new InvocationNode(callable, arguments);
+            return new InvocationNode(callable, arguments, token.Location);
         }
 
         private AstNode ParseLambda()
         {
             Expect(TokenType.LeftParen);
+            var token = Current();
             Advance(); // Skip (
 
             var parameters = new List<string>();
@@ -2459,7 +2473,7 @@ namespace TemplateInterpreter
                 {
                     // If we don't see a variable or next token is not assignment, this must be the final expression
                     var finalExpression = ParseExpression();
-                    return new LambdaNode(parameters, statements, finalExpression, _functionRegistry);
+                    return new LambdaNode(parameters, statements, finalExpression, _functionRegistry, token.Location);
                 }
 
                 var variableName = Current().Value;
@@ -2481,6 +2495,7 @@ namespace TemplateInterpreter
 
         private AstNode ParseObjectCreation()
         {
+            var token = Current();
             Advance(); // Skip obj(
 
             var fields = new List<KeyValuePair<string, AstNode>>();
@@ -2531,11 +2546,12 @@ namespace TemplateInterpreter
             Expect(TokenType.RightParen);
             Advance(); // Skip )
 
-            return new ObjectCreationNode(fields);
+            return new ObjectCreationNode(fields, token.Location);
         }
 
         private AstNode ParseArrayCreation()
         {
+            var token = Current();
             Advance(); // Skip [
 
             var elements = new List<AstNode>();
@@ -2544,7 +2560,7 @@ namespace TemplateInterpreter
             if (Current().Type == TokenType.RightBracket)
             {
                 Advance(); // Skip ]
-                return new ArrayNode(elements);
+                return new ArrayNode(elements, token.Location);
             }
 
             // Parse array elements
@@ -2566,7 +2582,7 @@ namespace TemplateInterpreter
                 Advance(); // Skip comma
             }
 
-            return new ArrayNode(elements);
+            return new ArrayNode(elements, token.Location);
         }
 
         private AstNode ParseIfStatement()
@@ -2576,6 +2592,7 @@ namespace TemplateInterpreter
 
             // Parse initial if
             Advance(); // Skip {{
+            var ifToken = Current();
             Advance(); // Skip if
             var condition = ParseExpression();
             Expect(TokenType.DirectiveEnd);
@@ -2623,12 +2640,13 @@ namespace TemplateInterpreter
                 }
             }
 
-            return new IfNode(conditionalBranches, elseBranch);
+            return new IfNode(conditionalBranches, elseBranch, ifToken.Location);
         }
 
         private AstNode ParseForStatement()
         {
             Advance(); // Skip {{
+            var token = Current();
             Advance(); // Skip for
             var iteratorName = Expect(TokenType.Variable).Value;
             Advance();
@@ -2650,7 +2668,7 @@ namespace TemplateInterpreter
             Expect(TokenType.DirectiveEnd);
             Advance(); // Skip }}
 
-            return new ForNode(iteratorName, collection, body);
+            return new ForNode(iteratorName, collection, body, token.Location);
         }
 
         private AstNode ParseExpression()
@@ -2664,10 +2682,11 @@ namespace TemplateInterpreter
 
             while (_position < _tokens.Count && Current().Type == TokenType.Or)
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var right = ParseAnd();
-                left = new BinaryNode(op, left, right);
+                left = new BinaryNode(op, left, right, token.Location);
             }
 
             return left;
@@ -2679,10 +2698,11 @@ namespace TemplateInterpreter
 
             while (_position < _tokens.Count && Current().Type == TokenType.And)
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var right = ParseComparison();
-                left = new BinaryNode(op, left, right);
+                left = new BinaryNode(op, left, right, token.Location);
             }
 
             return left;
@@ -2694,10 +2714,11 @@ namespace TemplateInterpreter
 
             while (_position < _tokens.Count && IsComparisonOperator(Current().Type))
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var right = ParseAdditive();
-                left = new BinaryNode(op, left, right);
+                left = new BinaryNode(op, left, right, token.Location);
             }
 
             return left;
@@ -2710,10 +2731,11 @@ namespace TemplateInterpreter
             while (_position < _tokens.Count &&
                    (Current().Type == TokenType.Plus || Current().Type == TokenType.Minus))
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var right = ParseMultiplicative();
-                left = new BinaryNode(op, left, right);
+                left = new BinaryNode(op, left, right, token.Location);
             }
 
             return left;
@@ -2726,10 +2748,11 @@ namespace TemplateInterpreter
             while (_position < _tokens.Count &&
                    (Current().Type == TokenType.Multiply || Current().Type == TokenType.Divide))
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var right = ParseUnary();
-                left = new BinaryNode(op, left, right);
+                left = new BinaryNode(op, left, right, token.Location);
             }
 
             return left;
@@ -2739,10 +2762,11 @@ namespace TemplateInterpreter
         {
             if (Current().Type == TokenType.Not)
             {
-                var op = Current().Type;
+                var token = Current();
+                var op = token.Type;
                 Advance();
                 var expression = ParseUnary();
-                return new UnaryNode(op, expression);
+                return new UnaryNode(op, expression, token.Location);
             }
 
             return ParsePrimary();
@@ -2775,33 +2799,33 @@ namespace TemplateInterpreter
                     break;
 
                 case TokenType.Function:
-                    expr = new FunctionReferenceNode(token.Value);
+                    expr = new FunctionReferenceNode(token.Value, token.Location);
                     Advance();
                     break;
 
                 case TokenType.Variable:
                     Advance();
-                    expr = new VariableNode(token.Value);
+                    expr = new VariableNode(token.Value, token.Location);
                     break;
 
                 case TokenType.String:
                     Advance();
-                    expr = new StringNode(token.Value);
+                    expr = new StringNode(token.Value, token.Location);
                     break;
 
                 case TokenType.Number:
                     Advance();
-                    expr = new NumberNode(token.Value);
+                    expr = new NumberNode(token.Value, token.Location);
                     break;
 
                 case TokenType.True:
                     Advance();
-                    expr = new BooleanNode(true);
+                    expr = new BooleanNode(true, token.Location);
                     break;
 
                 case TokenType.False:
                     Advance();
-                    expr = new BooleanNode(false);
+                    expr = new BooleanNode(false, token.Location);
                     break;
 
                 default:
@@ -2823,7 +2847,7 @@ namespace TemplateInterpreter
                 {
                     throw new Exception($"Expected field name but got {fieldToken.Type} at position {fieldToken.Location.Position}");
                 }
-                expr = new FieldAccessNode(expr, fieldToken.Value);
+                expr = new FieldAccessNode(expr, fieldToken.Value, fieldToken.Location);
                 Advance();
 
                 // Handle any invocations that follow nested object invocation
