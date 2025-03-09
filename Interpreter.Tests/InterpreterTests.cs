@@ -7,7 +7,6 @@ using System.Web.Script.Serialization;
 using Moq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace TemplateInterpreter.Tests
@@ -784,6 +783,18 @@ user:password", result);
         }
 
         [Test]
+        public void IncludeUsingVariables()
+        {
+            var registry = new TemplateRegistry();
+            var interpreter = new Interpreter(registry);
+
+            registry.RegisterTemplate("inner", @"<div>{{outerVar}}</div>");
+            var result = interpreter.Interpret(@"{{ let outerVar = 5 }}<div>{{ include inner }}</div>", _emptyData);
+
+            Assert.That("<div><div>5</div></div>", Is.EqualTo(result));
+        }
+
+        [Test]
         public void BasicVariableAssignment()
         {
             // Template that assigns a value and then outputs it
@@ -1271,7 +1282,7 @@ user:password", result);
         [Test]
         public void Literal_BasicDirective_ShouldReturnExactContent()
         {
-            var template = "{{literal}}Hello World{{/literal}}";
+            var template = "{{ literal }}Hello World{{ /literal }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("Hello World"));
         }
@@ -3431,7 +3442,7 @@ Joined nested monad: {{ flattened }}
             List<DateTime> dates = ParseDateTimeArray(result);
             Assert.AreEqual(7, dates.Count);
             Assert.AreEqual(new DateTime(2020, 1, 31), dates[0]);
-            Assert.AreEqual(new DateTime(2020, 2, 29), dates[1]);  
+            Assert.AreEqual(new DateTime(2020, 2, 29), dates[1]);
             Assert.AreEqual(new DateTime(2020, 3, 31), dates[2]);
             Assert.AreEqual(new DateTime(2020, 4, 30), dates[3]);
             Assert.AreEqual(new DateTime(2020, 5, 31), dates[4]);
@@ -3587,7 +3598,7 @@ Joined nested monad: {{ flattened }}
             StringAssert.Contains("Years: [", result);
             StringAssert.Contains("Months: [", result);
             StringAssert.Contains("Days: [", result);
-            
+
             // Verify the output contains valid date arrays
             Assert.IsTrue(Regex.IsMatch(result, @"Years: \[\d{4}-\d{2}-\d{2}"));
             Assert.IsTrue(Regex.IsMatch(result, @"Months: \[\d{4}-\d{2}-\d{2}"));
@@ -3597,13 +3608,13 @@ Joined nested monad: {{ flattened }}
         private List<DateTime> ParseDateTimeArray(string output)
         {
             string cleanOutput = output.Trim();
-            
+
             if (cleanOutput == "[]")
                 return new List<DateTime>();
-                
+
             cleanOutput = cleanOutput.Trim('[', ']');
             string[] dateStrings = cleanOutput.Split(',').Select(s => s.Trim()).ToArray();
-            
+
             List<DateTime> result = new List<DateTime>();
             foreach (string dateString in dateStrings)
             {
@@ -3623,7 +3634,7 @@ Joined nested monad: {{ flattened }}
                         int hour = int.Parse(match.Groups[4].Value);
                         int minute = int.Parse(match.Groups[5].Value);
                         int second = int.Parse(match.Groups[6].Value);
-                        
+
                         result.Add(new DateTime(year, month, day, hour, minute, second));
                     }
                     else
@@ -3632,8 +3643,141 @@ Joined nested monad: {{ flattened }}
                     }
                 }
             }
-            
+
             return result;
+        }
+
+        [Test]
+        public void ComplexTemplate_ToString_ValidatesAllAstNodeTypes()
+        {
+            // This template includes examples of all node types we want to test
+            string complexTemplate = @"
+{{* This is a comment *}}
+{{ literal }}Raw content here{{ /literal }}
+Hello, {{ name }}!
+
+{{ let greeting = ""Welcome to our site"" }}
+{{ greeting }}
+
+{{ if user.age > 18 }}
+  {{ capture adultContent }}You are an adult with {{user.age}} years of experience.{{ /capture }}
+  {{ adultContent }}
+{{ elseif user.age > 13 }}
+  You are a teenager.
+{{ else }}
+  You are a child.
+{{ /if }}
+
+{{ for item in user.items }}
+  - {{ item.name }}: ${{ item.price }}
+{{ /for }}
+
+{{ length(user.items) }} items found.
+
+{{ obj(id: 123, name: user.name, isActive: true) }}
+
+{{ user.data }}
+
+{{ toUpper(""make this uppercase"") }}
+
+{{ 5 + (10 * 3) }}
+
+{{ [1, 2, 3, ""four"", true] }}
+
+{{ (x, y) => x + y }}
+
+{{ include templateName }}
+";
+
+            // Parse the template to generate AST
+            var tokens = _interpreter.Lexer.Tokenize(complexTemplate);
+            var ast = _interpreter.Parser.Parse(tokens);
+
+            // Get the string representation of the AST
+            string astString = ast.ToString();
+
+            // Validate that the string contains the expected node types and formats
+            Assert.That(astString, Does.StartWith("TemplateNode("));
+
+            // Test TextNode representation
+            Assert.That(astString, Does.Contain("TextNode(text=\"Hello,\")"));
+
+            // Test NewlineNode and WhitespaceNode
+            Assert.That(astString, Does.Contain("NewlineNode("));
+            Assert.That(astString, Does.Contain("WhitespaceNode("));
+
+            // Test VariableNode
+            Assert.That(astString, Does.Contain("VariableNode(path=\"name\")"));
+
+            // Test StringNode with escaped quotes
+            Assert.That(astString, Does.Contain("StringNode(value=\"Welcome to our site\")"));
+
+            // Test LetNode
+            Assert.That(astString, Does.Contain("LetNode(variableName=\"greeting\""));
+
+            // Test CaptureNode
+            Assert.That(astString, Does.Contain("CaptureNode(variableName=\"adultContent\""));
+
+            // Test IfNode with conditional branches
+            Assert.That(astString, Does.Contain("IfNode(conditionalBranches=["));
+            Assert.That(astString, Does.Contain("elseBranch="));
+
+            // Test BinaryNode
+            Assert.That(astString, Does.Contain("BinaryNode(operator=GreaterThan"));
+
+            // Test ForNode
+            Assert.That(astString, Does.Contain("ForNode(iteratorName=\"item\", collection="));
+
+            // Test function references and invocation
+            Assert.That(astString, Does.Contain("FunctionReferenceNode(name=\"length\")"));
+            Assert.That(astString, Does.Contain("InvocationNode(callable="));
+
+            // Test ObjectCreationNode
+            Assert.That(astString, Does.Contain("ObjectCreationNode(fields=["));
+
+            // Test BooleanNode
+            Assert.That(astString, Does.Contain("BooleanNode(value=true)"));
+
+            // Test NumberNode
+            Assert.That(astString, Does.Match(new Regex("NumberNode\\(value=\\d+(\\.\\d+)?\\)")));
+
+            // Test ArrayNode
+            Assert.That(astString, Does.Contain("ArrayNode(elements=["));
+
+            // Test LambdaNode
+            Assert.That(astString, Does.Contain("LambdaNode(parameters=["));
+
+            // Test IncludeNode
+            Assert.That(astString, Does.Contain("IncludeNode(templateName=\"templateName\""));
+
+            // Test LiteralNode
+            Assert.That(astString, Does.Contain("LiteralNode(content=\"Raw content here\")"));
+
+            // Check proper nesting structure using parentheses count
+            int openParenCount = astString.Count(c => c == '(');
+            int closeParenCount = astString.Count(c => c == ')');
+            Assert.AreEqual(openParenCount, closeParenCount, "AST string should have balanced parentheses");
+
+            // Validate proper array bracket usage
+            int openBracketCount = astString.Count(c => c == '[');
+            int closeBracketCount = astString.Count(c => c == ']');
+            Assert.AreEqual(openBracketCount, closeBracketCount, "AST string should have balanced brackets");
+        }
+
+        [Test]
+        public void InfiniteRecursionThrowsError()
+        {
+            var template = @"{{ let fn = () => fn() }}{{ fn() }}";
+
+            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
+            Assert.That(ex.Message, Is.EqualTo("Maximum call stack depth 1000 has been exceeded."));
+        }
+
+        [Test]
+        public void NestedClosureTest()
+        {
+            var template = @"{{ let fn = (x) => p = 2, (y) => q = 3, (z) => r = 1, (p * q + r) + (x * y + z) }}{{ fn(2)(3)(1) }}";
+            Assert.That(_interpreter.Interpret(template, _emptyData), Is.EqualTo("14"));
         }
     }
 }

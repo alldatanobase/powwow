@@ -6,6 +6,7 @@ using System.Dynamic;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace TemplateInterpreter
@@ -26,14 +27,19 @@ namespace TemplateInterpreter
         private readonly FunctionRegistry _functionRegistry;
         private readonly ITemplateResolver _templateResolver;
         private readonly IDataverseService _dataverseService;
+        private readonly int _maxRecursionDepth;
 
-        public Interpreter(ITemplateResolver templateResolver = null, IDataverseService dataverseService = null)
+        public Lexer Lexer { get { return _lexer; } }
+        public Parser Parser { get { return _parser; } }
+
+        public Interpreter(ITemplateResolver templateResolver = null, IDataverseService dataverseService = null, int maxRecursionDepth = 1000)
         {
             _functionRegistry = new FunctionRegistry();
             _lexer = new Lexer();
             _parser = new Parser(_functionRegistry);
             _templateResolver = templateResolver;
             _dataverseService = dataverseService;
+            _maxRecursionDepth = maxRecursionDepth;
 
             RegisterDataverseFunctions();
         }
@@ -78,7 +84,7 @@ namespace TemplateInterpreter
                 ast = ProcessIncludes(ast);
             }
 
-            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null));
+            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null, _maxRecursionDepth));
         }
 
         private AstNode ProcessIncludes(AstNode node)
@@ -133,15 +139,19 @@ namespace TemplateInterpreter
         private readonly Dictionary<string, dynamic> _variables;
         private readonly FunctionRegistry _functionRegistry;
         protected readonly ExecutionContext _parentContext;
+        protected readonly int _maxDepth;
 
-        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry, ExecutionContext parentContext)
+        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry, ExecutionContext parentContext, int maxDepth)
         {
             _data = data;
             _iteratorValues = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();
             _functionRegistry = functionRegistry;
             _parentContext = parentContext;
+            _maxDepth = maxDepth;
         }
+
+        public int MaxDepth { get { return _maxDepth; } }
 
         public virtual void DefineVariable(string name, dynamic value)
         {
@@ -169,7 +179,7 @@ namespace TemplateInterpreter
 
         public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value)
         {
-            var newContext = new ExecutionContext(_data, _functionRegistry, this);
+            var newContext = new ExecutionContext(_data, _functionRegistry, this, MaxDepth);
 
             // Copy variables to new context
             foreach (var variable in _variables)
@@ -258,7 +268,7 @@ namespace TemplateInterpreter
             ExecutionContext parentContext,
             List<string> parameterNames,
             List<dynamic> parameterValues)
-            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext)
+            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth)
         {
             _parameters = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();
@@ -612,17 +622,17 @@ namespace TemplateInterpreter
                         if (TryMatch("{{"))
                         {
                             directiveStartToken = new Token(TokenType.DirectiveStart, "{{", currentLookahead);
-                            currentLookahead += 2 + WhitespaceCount();
+                            currentLookahead += 2 + WhitespaceCount(currentLookahead + 2);
                         }
                         else
                         {
                             directiveStartToken = new Token(TokenType.DirectiveStart, "{{-", currentLookahead);
-                            currentLookahead += 3 + WhitespaceCount();
+                            currentLookahead += 3 + WhitespaceCount(currentLookahead + 3);
                         }
 
                         if (TryMatchAt("literal", currentLookahead))
                         {
-                            currentLookahead += 7 + WhitespaceCount();
+                            currentLookahead += 7 + WhitespaceCount(currentLookahead + 7);
 
                             if (TryMatchAt("}}", currentLookahead))
                             {
@@ -644,7 +654,7 @@ namespace TemplateInterpreter
                         if (TryMatchAt("/literal", currentLookahead))
                         {
                             var endLiteralToken = new Token(TokenType.EndLiteral, "/literal", currentLookahead);
-                            currentLookahead += 8 + WhitespaceCount();
+                            currentLookahead += 8 + WhitespaceCount(currentLookahead + 8);
 
                             if (TryMatchAt("}}", currentLookahead) || TryMatchAt("-}}", currentLookahead))
                             {
@@ -1135,10 +1145,10 @@ namespace TemplateInterpreter
             }
         }
 
-        private int WhitespaceCount()
+        private int WhitespaceCount(int position)
         {
-            int originalPosition = _position;
-            int currentPosition = _position;
+            int originalPosition = position;
+            int currentPosition = position;
             while (currentPosition < _input.Length && char.IsWhiteSpace(_input[currentPosition]))
             {
                 currentPosition++;
@@ -1172,9 +1182,33 @@ namespace TemplateInterpreter
         }
     }
 
+    public static class GlobalCallStack
+    {
+        private static readonly ThreadLocal<int> _callDepth = new ThreadLocal<int>(() => 0);
+
+        public static int CurrentDepth => _callDepth.Value;
+
+        public static void IncrementDepth() => _callDepth.Value++;
+
+        public static void DecrementDepth() => _callDepth.Value--;
+
+        public static void CheckDepth(int maxDepth)
+        {
+            if (CurrentDepth > maxDepth)
+            {
+                throw new Exception($"Maximum call stack depth {maxDepth} has been exceeded.");
+            }
+        }
+    }
+
     public abstract class AstNode
     {
         public abstract dynamic Evaluate(ExecutionContext context);
+
+        public override string ToString()
+        {
+            return "AstNode";
+        }
     }
 
     public class LiteralNode : AstNode
@@ -1189,6 +1223,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _content;
+        }
+
+        public override string ToString()
+        {
+            return $"LiteralNode(content=\"{_content.Replace("\"", "\\\"")}\")";
         }
     }
 
@@ -1218,6 +1257,12 @@ namespace TemplateInterpreter
             }
             return _includedTemplate.Evaluate(context);
         }
+
+        public override string ToString()
+        {
+            string templateStr = _includedTemplate == null ? "null" : _includedTemplate.ToString();
+            return $"IncludeNode(templateName=\"{_templateName}\", template={templateStr})";
+        }
     }
 
     public class TextNode : AstNode
@@ -1232,6 +1277,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _text;
+        }
+
+        public override string ToString()
+        {
+            return $"TextNode(text=\"{_text.Replace("\"", "\\\"")}\")";
         }
     }
 
@@ -1248,6 +1298,11 @@ namespace TemplateInterpreter
         {
             return _text;
         }
+
+        public override string ToString()
+        {
+            return $"WhitespaceNode(text=\"{_text.Replace("\"", "\\\"")}\")";
+        }
     }
 
     public class NewlineNode : AstNode
@@ -1262,6 +1317,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _text;
+        }
+
+        public override string ToString()
+        {
+            return $"NewlineNode()";
         }
     }
 
@@ -1278,67 +1338,79 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            // Then evaluate the callable, but handle special cases
-            var callable = _callable.Evaluate(context);
+            GlobalCallStack.IncrementDepth();
 
-            var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
-                _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
-                _arguments.Select(arg => arg.Evaluate(context)).ToList();
-
-            // Now handle the callable based on its type
-            if (callable is Func<List<dynamic>, dynamic> lambdaFunc)
+            try
             {
-                // Direct lambda invocation
-                return lambdaFunc(args);
-            }
-            else if (callable is FunctionInfo functionInfo)
-            {
-                FunctionRegistry registry;
+                // Check if we've exceeded call stack depth
+                GlobalCallStack.CheckDepth(context.MaxDepth);
 
-                // First check if this is a parameter that contains a function in any parent context
-                if (context is LambdaExecutionContext lambdaContext &&
-                    lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
+                // Then evaluate the callable, but handle special cases
+                var callable = _callable.Evaluate(context);
+
+                var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
+                    _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
+                    _arguments.Select(arg => arg.Evaluate(context)).ToList();
+
+                // Now handle the callable based on its type
+                if (callable is Func<List<dynamic>, dynamic> lambdaFunc)
                 {
-                    if (paramValue is Func<List<dynamic>, dynamic> paramFunc)
-                    {
-                        return paramFunc(args);
-                    }
-                    else if (paramValue is FunctionInfo paramFuncInfo)
-                    {
-                        registry = context.GetFunctionRegistry();
+                    // Direct lambda invocation
+                    return lambdaFunc(args);
+                }
+                else if (callable is FunctionInfo functionInfo)
+                {
+                    FunctionRegistry registry;
 
-                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
+                    // First check if this is a parameter that contains a function in any parent context
+                    if (context is LambdaExecutionContext lambdaContext &&
+                        lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
+                    {
+                        if (paramValue is Func<List<dynamic>, dynamic> paramFunc)
                         {
-                            throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
+                            return paramFunc(args);
                         }
-                        registry.ValidateArguments(function, effectiveArgs);
-                        return function.Implementation(effectiveArgs);
-                    }
-                }
+                        else if (paramValue is FunctionInfo paramFuncInfo)
+                        {
+                            registry = context.GetFunctionRegistry();
 
-                // Check if this is a variable that contains a function
-                if (context.TryResolveValue(functionInfo.Name, out var variableValue))
-                {
-                    if (variableValue is Func<List<dynamic>, dynamic> variableFunc)
+                            if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
+                            {
+                                throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
+                            }
+                            registry.ValidateArguments(function, effectiveArgs);
+                            return function.Implementation(effectiveArgs);
+                        }
+                    }
+
+                    // Check if this is a variable that contains a function
+                    if (context.TryResolveValue(functionInfo.Name, out var variableValue))
                     {
-                        return variableFunc(args);
+                        if (variableValue is Func<List<dynamic>, dynamic> variableFunc)
+                        {
+                            return variableFunc(args);
+                        }
                     }
+
+                    // If not a parameter in any context or parameter isn't a function, try the registry
+                    registry = context.GetFunctionRegistry();
+                    if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
+                    {
+                        throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
+                    }
+
+                    registry.ValidateArguments(func, effArgs);
+
+                    return func.Implementation(effArgs);
                 }
 
-                // If not a parameter in any context or parameter isn't a function, try the registry
-                registry = context.GetFunctionRegistry();
-                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
-                {
-                    throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
-                }
 
-                registry.ValidateArguments(func, effArgs);
-
-                return func.Implementation(effArgs);
+                throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
             }
-
-
-            throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
+            finally
+            {
+                GlobalCallStack.DecrementDepth();
+            }
         }
 
         private bool IsLazilyEvaluatedFunction(dynamic callable, int argumentCount, ExecutionContext context)
@@ -1350,6 +1422,12 @@ namespace TemplateInterpreter
                 return registry.LazyFunctionExists(functionInfo.Name, argumentCount);
             }
             return false;
+        }
+
+        public override string ToString()
+        {
+            var argsStr = string.Join(", ", _arguments.Select(arg => arg.ToString()));
+            return $"InvocationNode(callable={_callable.ToString()}, arguments=[{argsStr}])";
         }
     }
 
@@ -1400,6 +1478,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return new FunctionInfo(_functionName);
+        }
+
+        public override string ToString()
+        {
+            return $"FunctionReferenceNode(name=\"{_functionName}\")";
         }
     }
 
@@ -1471,6 +1554,14 @@ namespace TemplateInterpreter
                 return _finalExpression.Evaluate(lambdaContext);
             });
         }
+
+        public override string ToString()
+        {
+            var paramsStr = string.Join(", ", _parameters.Select(p => $"\"{p}\""));
+            var statementsStr = string.Join(", ", _statements.Select(st => $"{{key=\"{st.Key}\", value={st.Value.ToString()}}}"));
+
+            return $"LambdaNode(parameters=[{paramsStr}], statements=[{statementsStr}], finalExpression={_finalExpression.ToString()})";
+        }
     }
 
     public class LetNode : AstNode
@@ -1490,6 +1581,11 @@ namespace TemplateInterpreter
             context.DefineVariable(_variableName, value);
             return string.Empty; // Let statements don't produce output
         }
+
+        public override string ToString()
+        {
+            return $"LetNode(variableName=\"{_variableName}\", expression={_expression.ToString()})";
+        }
     }
 
     public class CaptureNode : AstNode
@@ -1508,6 +1604,11 @@ namespace TemplateInterpreter
             var result = _body.Evaluate(context);
             context.DefineVariable(_variableName, result.ToString());
             return string.Empty; // Capture doesn't output anything directly
+        }
+
+        public override string ToString()
+        {
+            return $"CaptureNode(variableName=\"{_variableName}\", body={_body.ToString()})";
         }
     }
 
@@ -1531,6 +1632,12 @@ namespace TemplateInterpreter
             }
 
             return obj;
+        }
+
+        public override string ToString()
+        {
+            var fieldsStr = string.Join(", ", _fields.Select(f => $"{{key=\"{f.Key}\", value={f.Value.ToString()}}}"));
+            return $"ObjectCreationNode(fields=[{fieldsStr}])";
         }
     }
 
@@ -1579,6 +1686,11 @@ namespace TemplateInterpreter
 
             return value;
         }
+
+        public override string ToString()
+        {
+            return $"FieldAccessNode(object={_object.ToString()}, fieldName=\"{_fieldName}\")";
+        }
     }
 
     public class ArrayNode : AstNode
@@ -1593,6 +1705,12 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _elements.Select(element => element.Evaluate(context)).ToList();
+        }
+
+        public override string ToString()
+        {
+            var elementsStr = string.Join(", ", _elements.Select(e => e.ToString()));
+            return $"ArrayNode(elements=[{elementsStr}])";
         }
     }
 
@@ -1609,6 +1727,11 @@ namespace TemplateInterpreter
         {
             return context.ResolveValue(_path);
         }
+
+        public override string ToString()
+        {
+            return $"VariableNode(path=\"{_path}\")";
+        }
     }
 
     public class StringNode : AstNode
@@ -1623,6 +1746,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _value;
+        }
+
+        public override string ToString()
+        {
+            return $"StringNode(value=\"{_value.Replace("\"", "\\\"")}\")";
         }
     }
 
@@ -1639,6 +1767,11 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string ToString()
+        {
+            return $"NumberNode(value={_value})";
+        }
     }
 
     public class BooleanNode : AstNode
@@ -1653,6 +1786,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _value;
+        }
+
+        public override string ToString()
+        {
+            return $"BooleanNode(value={_value.ToString().ToLower()})";
         }
     }
 
@@ -1678,6 +1816,11 @@ namespace TemplateInterpreter
                 default:
                     throw new Exception(string.Format("Unknown unary operator: {0}", _operator));
             }
+        }
+
+        public override string ToString()
+        {
+            return $"UnaryNode(operator={_operator}, expression={_expression.ToString()})";
         }
     }
 
@@ -1737,6 +1880,11 @@ namespace TemplateInterpreter
                     throw new Exception(string.Format("Unknown binary operator: {0}", _operator));
             }
         }
+
+        public override string ToString()
+        {
+            return $"BinaryNode(operator={_operator}, left={_left.ToString()}, right={_right.ToString()})";
+        }
     }
 
     public class ForNode : AstNode
@@ -1780,6 +1928,11 @@ namespace TemplateInterpreter
             }
 
             return result.ToString();
+        }
+
+        public override string ToString()
+        {
+            return $"ForNode(iteratorName=\"{_iteratorName}\", collection={_collection.ToString()}, body={_body.ToString()})";
         }
     }
 
@@ -1827,6 +1980,17 @@ namespace TemplateInterpreter
 
             return string.Empty;
         }
+
+        public override string ToString()
+        {
+            var branchesStr = string.Join(", ", _conditionalBranches.Select(b =>
+                $"{{condition={b.Condition.ToString()}, body={b.Body.ToString()}}}"
+            ));
+
+            string elseStr = _elseBranch != null ? _elseBranch.ToString() : "null";
+
+            return $"IfNode(conditionalBranches=[{branchesStr}], elseBranch={elseStr})";
+        }
     }
 
     public class TemplateNode : AstNode
@@ -1850,6 +2014,11 @@ namespace TemplateInterpreter
             return result.ToString();
         }
 
+        public override string ToString()
+        {
+            var childrenStr = string.Join(", ", _children.Select(child => child.ToString()));
+            return $"TemplateNode(children=[{childrenStr}])";
+        }
     }
 
     public class Parser
@@ -4446,7 +4615,7 @@ namespace TemplateInterpreter
                 return evaluated.ToString();
             }
             else if (
-                evaluated is List<dynamic> || 
+                evaluated is List<dynamic> ||
                 evaluated is List<decimal> ||
                 evaluated is List<bool> ||
                 evaluated is List<string> ||
@@ -4502,7 +4671,7 @@ namespace TemplateInterpreter
                 return serializer.Serialize(evaluated.ToString());
             }
             else if (
-                evaluated is List<dynamic> || 
+                evaluated is List<dynamic> ||
                 evaluated is List<decimal> ||
                 evaluated is List<bool> ||
                 evaluated is List<string> ||
