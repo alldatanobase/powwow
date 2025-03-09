@@ -6,7 +6,6 @@ using System.Dynamic;
 using System.Linq;
 using System.Net;
 using System.Text;
-using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace TemplateInterpreter
@@ -140,6 +139,7 @@ namespace TemplateInterpreter
         private readonly FunctionRegistry _functionRegistry;
         protected readonly ExecutionContext _parentContext;
         protected readonly int _maxDepth;
+        private readonly int _currentDepth;
 
         public ExecutionContext(dynamic data, FunctionRegistry functionRegistry, ExecutionContext parentContext, int maxDepth)
         {
@@ -149,9 +149,21 @@ namespace TemplateInterpreter
             _functionRegistry = functionRegistry;
             _parentContext = parentContext;
             _maxDepth = maxDepth;
+            _currentDepth = _parentContext != null ? _parentContext.CurrentDepth + 1 : 0;
+            CheckStackDepth();
         }
 
         public int MaxDepth { get { return _maxDepth; } }
+
+        public int CurrentDepth { get { return _currentDepth; } }
+
+        public void CheckStackDepth()
+        {
+            if (_currentDepth >= _maxDepth)
+            {
+                throw new Exception($"Maximum call stack depth {_maxDepth} has been exceeded.");
+            }
+        }
 
         public virtual void DefineVariable(string name, dynamic value)
         {
@@ -428,7 +440,7 @@ namespace TemplateInterpreter
             {
                 dynamic descendentValue;
 
-                if(_definitionContext.TryResolveValue(path, out descendentValue))
+                if (_definitionContext.TryResolveValue(path, out descendentValue))
                 {
                     value = descendentValue;
                     return true;
@@ -1415,25 +1427,6 @@ namespace TemplateInterpreter
         }
     }
 
-    public static class GlobalCallStack
-    {
-        private static readonly ThreadLocal<int> _callDepth = new ThreadLocal<int>(() => 0);
-
-        public static int CurrentDepth => _callDepth.Value;
-
-        public static void IncrementDepth() => _callDepth.Value++;
-
-        public static void DecrementDepth() => _callDepth.Value--;
-
-        public static void CheckDepth(int maxDepth)
-        {
-            if (CurrentDepth > maxDepth)
-            {
-                throw new Exception($"Maximum call stack depth {maxDepth} has been exceeded.");
-            }
-        }
-    }
-
     public abstract class AstNode
     {
         public SourceLocation Location { get; }
@@ -1578,74 +1571,64 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            GlobalCallStack.IncrementDepth();
+            context.CheckStackDepth();
 
-            try
+            // Evaluate the callable, but handle special cases
+            var callable = _callable.Evaluate(context);
+
+            var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
+                _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
+                _arguments.Select(arg => arg.Evaluate(context)).ToList();
+
+            // Now handle the callable based on its type
+            if (callable is Func<ExecutionContext, List<dynamic>, dynamic> lambdaFunc)
             {
-                // Check if we've exceeded call stack depth
-                GlobalCallStack.CheckDepth(context.MaxDepth);
+                // Direct lambda invocation
+                return lambdaFunc(context, args);
+            }
+            else if (callable is FunctionInfo functionInfo)
+            {
+                var registry = context.GetFunctionRegistry();
 
-                // Then evaluate the callable, but handle special cases
-                var callable = _callable.Evaluate(context);
-
-                var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
-                    _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
-                    _arguments.Select(arg => arg.Evaluate(context)).ToList();
-
-                // Now handle the callable based on its type
-                if (callable is Func<ExecutionContext, List<dynamic>, dynamic> lambdaFunc)
+                // First check if this is a parameter that contains a function in any parent context
+                if (context is LambdaExecutionContext lambdaContext &&
+                    lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
                 {
-                    // Direct lambda invocation
-                    return lambdaFunc(context, args);
-                }
-                else if (callable is FunctionInfo functionInfo)
-                {
-                    var registry = context.GetFunctionRegistry();
-
-                    // First check if this is a parameter that contains a function in any parent context
-                    if (context is LambdaExecutionContext lambdaContext &&
-                        lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
+                    if (paramValue is Func<ExecutionContext, List<dynamic>, dynamic> paramFunc)
                     {
-                        if (paramValue is Func<ExecutionContext, List<dynamic>, dynamic> paramFunc)
-                        {
-                            return paramFunc(context, args);
-                        }
-                        else if (paramValue is FunctionInfo paramFuncInfo)
-                        {
-                            if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
-                            {
-                                throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
-                            }
-                            registry.ValidateArguments(function, effectiveArgs);
-                            return function.Implementation(context, effectiveArgs);
-                        }
+                        return paramFunc(context, args);
                     }
-
-                    // Check if this is a variable that contains a function
-                    if (context.TryResolveValue(functionInfo.Name, out var variableValue))
+                    else if (paramValue is FunctionInfo paramFuncInfo)
                     {
-                        if (variableValue is Func<ExecutionContext, List<dynamic>, dynamic> variableFunc)
+                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
                         {
-                            return variableFunc(context, args);
+                            throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
                         }
+                        registry.ValidateArguments(function, effectiveArgs);
+                        return function.Implementation(context, effectiveArgs);
                     }
-
-                    // If not a parameter in any context or parameter isn't a function, try the registry
-                    if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
-                    {
-                        throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
-                    }
-                    registry.ValidateArguments(func, effArgs);
-                    return func.Implementation(context, effArgs);
                 }
 
+                // Check if this is a variable that contains a function
+                if (context.TryResolveValue(functionInfo.Name, out var variableValue))
+                {
+                    if (variableValue is Func<ExecutionContext, List<dynamic>, dynamic> variableFunc)
+                    {
+                        return variableFunc(context, args);
+                    }
+                }
 
-                throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
+                // If not a parameter in any context or parameter isn't a function, try the registry
+                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
+                {
+                    throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
+                }
+                registry.ValidateArguments(func, effArgs);
+                return func.Implementation(context, effArgs);
             }
-            finally
-            {
-                GlobalCallStack.DecrementDepth();
-            }
+
+
+            throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
         }
 
         private bool IsLazilyEvaluatedFunction(dynamic callable, int argumentCount, ExecutionContext context)
