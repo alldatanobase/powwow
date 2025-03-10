@@ -341,12 +341,6 @@ namespace TemplateInterpreter
 
         public override void DefineVariable(string name, dynamic value)
         {
-            //// Check if already defined as a global data variable
-            //if (_data.ContainsKey(name))
-            //{
-            //    throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
-            //}
-
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
             {
@@ -571,10 +565,13 @@ namespace TemplateInterpreter
     {
         public SourceLocation Location { get; }
 
+        public string Descriptor { get; }
+
         public TemplateParsingException(string message, SourceLocation location)
             : base($"Error at {location}: {message}")
         {
             Location = location;
+            Descriptor = message;
         }
     }
 
@@ -914,6 +911,12 @@ namespace TemplateInterpreter
             while (_position < _input.Length)
             {
                 SkipWhitespace();
+
+                if (_position >= _input.Length)
+                {
+                    // if the whitespace skipped was the last thing in the input buffer
+                    continue;
+                }
 
                 if (TryMatch("}}"))
                 {
@@ -1540,7 +1543,7 @@ namespace TemplateInterpreter
         {
             if (_includedTemplate == null)
             {
-                throw new Exception($"Template '{_templateName}' has not been resolved");
+                throw new Exception($"Template '{_templateName}' could not been resolved");
             }
             return _includedTemplate.Evaluate(context);
         }
@@ -2393,7 +2396,7 @@ namespace TemplateInterpreter
                     {
                         if (_position == 0)
                         {
-                            throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
+                            throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
                         }
                         // We've hit a closing directive - return control to the parent parser
                         break;
@@ -2405,7 +2408,7 @@ namespace TemplateInterpreter
                 }
                 else
                 {
-                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
+                    throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
                 }
             }
 
@@ -2530,6 +2533,8 @@ namespace TemplateInterpreter
         private AstNode ParseInvocation(AstNode callable)
         {
             var token = Current();
+            string callableName = callable is FunctionReferenceNode funcNode ? funcNode.ToString() : "lambda";
+
             Advance(); // Skip (
             var arguments = new List<AstNode>();
 
@@ -2542,13 +2547,27 @@ namespace TemplateInterpreter
                     if (Current().Type == TokenType.RightParen)
                         break;
 
-                    Expect(TokenType.Comma);
-                    Advance();
+                    try
+                    {
+                        Expect(TokenType.Comma);
+                        Advance();
+                    }
+                    catch (TemplateParsingException ex)
+                    {
+                        throw new TemplateParsingException($"Expected comma between function arguments or a closing parenthesis: {ex.Descriptor}", Current().Location);
+                    }
                 }
             }
 
-            Expect(TokenType.RightParen);
-            Advance();
+            try
+            {
+                Expect(TokenType.RightParen);
+                Advance();
+            }
+            catch (TemplateParsingException ex)
+            {
+                new TemplateParsingException($"Unclosed functional call: {ex.Descriptor}", Current().Location);
+            }
 
             return new InvocationNode(callable, arguments, token.Location);
         }
@@ -2569,7 +2588,15 @@ namespace TemplateInterpreter
                 {
                     if (Current().Type != TokenType.Variable && Current().Type != TokenType.Parameter)
                     {
-                        throw new Exception($"Expected parameter name but got {Current().Type} at position {Current().Location.Position}");
+                        throw new TemplateParsingException($"Expected parameter name but got {Current().Type}", Current().Location);
+                    }
+
+                    if (parameters.Contains(Current().Value))
+                    {
+                        throw new TemplateParsingException(
+                            $"Duplicate parameter name '{Current().Value}' in lambda definition",
+                            Current().Location
+                        );
                     }
 
                     parameters.Add(Current().Value);
@@ -2578,16 +2605,46 @@ namespace TemplateInterpreter
                     if (Current().Type == TokenType.RightParen)
                         break;
 
-                    Expect(TokenType.Comma);
-                    Advance(); // Skip comma
+                    try
+                    {
+                        Expect(TokenType.Comma);
+                        Advance(); // Skip comma
+                    }
+                    catch (TemplateParsingException ex)
+                    {
+                        throw new TemplateParsingException(
+                            $"Expected comma between lambda parameters: {ex.Descriptor}",
+                            Current().Location
+                        );
+                    }
                 }
             }
 
-            Expect(TokenType.RightParen);
-            Advance(); // Skip )
+            try
+            {
+                Expect(TokenType.RightParen);
+                Advance(); // Skip )
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException(
+                    $"Expected closing parenthesis after lambda parameters: {ex.Descriptor}",
+                    Current().Location
+                );
+            }
 
-            Expect(TokenType.Arrow);
-            Advance(); // Skip =>
+            try
+            {
+                Expect(TokenType.Arrow);
+                Advance(); // Skip =>
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException(
+                    $"Expected '=>' after lambda parameters: {ex.Descriptor}",
+                    Current().Location
+                );
+            }
 
             // Parse statement list
             while (true)
@@ -2604,17 +2661,34 @@ namespace TemplateInterpreter
                 var variableName = Current().Value;
                 Advance();
 
-                Expect(TokenType.Assignment);
-                Advance();
+                try
+                {
+                    Expect(TokenType.Assignment);
+                    Advance();
+                }
+                catch (TemplateParsingException ex)
+                {
+                    throw new TemplateParsingException(
+                        $"Expected assignment operator '=' after variable in lambda: {ex.Descriptor}",
+                        Current().Location
+                    );
+                }
 
                 var expression = ParseExpression();
                 statements.Add(new KeyValuePair<string, AstNode>(variableName, expression));
 
-                if (Current().Type != TokenType.Comma)
+                try
                 {
-                    throw new Exception($"Expected comma after statement at position {Current().Location.Position}");
+                    Expect(TokenType.Comma);
+                    Advance(); // Skip comma
                 }
-                Advance(); // Skip comma
+                catch (TemplateParsingException ex)
+                {
+                    throw new TemplateParsingException(
+                        $"Expected comma after statement in lambda: {ex.Descriptor}",
+                        Current().Location
+                    );
+                }
             }
         }
 
@@ -2630,20 +2704,20 @@ namespace TemplateInterpreter
                 // Parse field name
                 if (Current().Type != TokenType.Variable)
                 {
-                    throw new Exception($"Expected field name but got {Current().Type} at position {Current().Location.Position}");
+                    throw new TemplateParsingException($"Expected field name but got {Current().Type}", Current().Location);
                 }
 
                 var fieldName = Current().Value;
                 if (fields.Any(f => f.Key == fieldName))
                 {
-                    throw new Exception($"Duplicate field name '{fieldName}' defined at position {Current().Location.Position}");
+                    throw new TemplateParsingException($"Duplicate field name '{fieldName}' defined in object", Current().Location);
                 }
                 Advance();
 
                 // Parse colon
                 if (Current().Type != TokenType.Colon)
                 {
-                    throw new Exception($"Expected ':' but got {Current().Type} at position {Current().Location.Position}");
+                    throw new TemplateParsingException($"Expected ':' but got {Current().Type}", Current().Location);
                 }
                 Advance();
 
@@ -2664,7 +2738,7 @@ namespace TemplateInterpreter
                 }
                 else
                 {
-                    throw new Exception($"Expected ',' or ')' but got {Current().Type} at position {Current().Location.Position}");
+                    throw new TemplateParsingException($"Unclosed object literal: expected ',' or ')' but got {Current().Type}", Current().Location);
                 }
             }
 
@@ -2701,7 +2775,7 @@ namespace TemplateInterpreter
 
                 if (Current().Type != TokenType.Comma)
                 {
-                    throw new Exception($"Expected ',' or ']' but got {Current().Type} at position {Current().Location.Position}");
+                    throw new TemplateParsingException($"Expected ',' or ']' but got {Current().Type}", Current().Location);
                 }
 
                 Advance(); // Skip comma
@@ -2714,14 +2788,23 @@ namespace TemplateInterpreter
         {
             var conditionalBranches = new List<IfNode.IfBranch>();
             AstNode elseBranch = null;
+            bool foundClosingTag = false;
 
             // Parse initial if
             Advance(); // Skip {{
             var ifToken = Current();
             Advance(); // Skip if
             var condition = ParseExpression();
-            Expect(TokenType.DirectiveEnd);
-            Advance(); // Skip }}
+
+            try
+            {
+                Expect(TokenType.DirectiveEnd);
+                Advance(); // Skip }}
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Unclosed if directive: {ex.Descriptor}", ifToken.Location);
+            }
 
             var body = ParseTemplate();
             conditionalBranches.Add(new IfNode.IfBranch(condition, body));
@@ -2736,8 +2819,17 @@ namespace TemplateInterpreter
                     Advance(); // Skip {{
                     Advance(); // Skip elseif
                     condition = ParseExpression();
-                    Expect(TokenType.DirectiveEnd);
-                    Advance(); // Skip }}
+
+                    try
+                    {
+                        Expect(TokenType.DirectiveEnd);
+                        Advance(); // Skip }}
+                    }
+                    catch (TemplateParsingException ex)
+                    {
+                        throw new TemplateParsingException($"Unclosed elseif directive: {ex.Descriptor}", token.Location);
+                    }
+
                     body = ParseTemplate();
                     conditionalBranches.Add(new IfNode.IfBranch(condition, body));
                 }
@@ -2745,16 +2837,35 @@ namespace TemplateInterpreter
                 {
                     Advance(); // Skip {{
                     Advance(); // Skip else
-                    Expect(TokenType.DirectiveEnd);
-                    Advance(); // Skip }}
+
+                    try
+                    {
+                        Expect(TokenType.DirectiveEnd);
+                        Advance(); // Skip }}
+                    }
+                    catch (TemplateParsingException ex)
+                    {
+                        throw new TemplateParsingException($"Unclosed else directive: {ex.Descriptor}", token.Location);
+                    }
                     elseBranch = ParseTemplate();
                 }
+
                 else if (token.Type == TokenType.EndIf)
                 {
                     Advance(); // Skip {{
                     Advance(); // Skip /if
-                    Expect(TokenType.DirectiveEnd);
-                    Advance(); // Skip }}
+
+                    try
+                    {
+                        Expect(TokenType.DirectiveEnd);
+                        Advance(); // Skip }}
+                    }
+                    catch (TemplateParsingException ex)
+                    {
+                        throw new TemplateParsingException($"Unclosed /if directive: {ex.Descriptor}", token.Location);
+                    }
+
+                    foundClosingTag = true;
                     break;
                 }
                 else
@@ -2762,6 +2873,22 @@ namespace TemplateInterpreter
                     // This is not an if-related token, so it must be the start of
                     // nested content - let ParseTemplate handle it
                     break;
+                }
+            }
+
+            // Check if we found a closing tag
+            if (!foundClosingTag)
+            {
+                try
+                {
+                    var token = Current();
+                    throw new TemplateParsingException("Unclosed if statement: Missing {{/if}} directive", Current().Location);
+                }
+                catch (TemplateParsingException)
+                {
+                    var lastToken = _tokens.Count > 0 ? _tokens[_tokens.Count - 1] : null;
+                    var location = lastToken?.Location ?? new SourceLocation(0, 0, 0);
+                    throw new TemplateParsingException("Unclosed if statement: Missing {{/if}} directive", location);
                 }
             }
 
@@ -2773,25 +2900,73 @@ namespace TemplateInterpreter
             Advance(); // Skip {{
             var token = Current();
             Advance(); // Skip for
-            var iteratorName = Expect(TokenType.Variable).Value;
-            Advance();
 
-            Expect(TokenType.In);
-            Advance();
+            string iteratorName;
+
+            try
+            {
+                iteratorName = Expect(TokenType.Variable).Value;
+                Advance();
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Expected iterator variable name: {ex.Descriptor}", Current().Location);
+            }
+
+            try
+            {
+                Expect(TokenType.In);
+                Advance();
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Expected 'in' keyword after iterator name: {ex.Descriptor}", Current().Location);
+            }
 
             var collection = ParseExpression();
-            Expect(TokenType.DirectiveEnd);
-            Advance(); // Skip }}
+
+            try
+            {
+                Expect(TokenType.DirectiveEnd);
+                Advance(); // Skip }}
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Unclosed for directive: {ex.Descriptor}", Current().Location);
+            }
 
             var body = ParseTemplate();
 
             // Handle the closing for tag
-            Expect(TokenType.DirectiveStart);
-            Advance(); // Skip {{
-            Expect(TokenType.EndFor);
-            Advance(); // Skip /for
-            Expect(TokenType.DirectiveEnd);
-            Advance(); // Skip }}
+            try
+            {
+                Expect(TokenType.DirectiveStart);
+                Advance(); // Skip {{
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Expected closing /for directive: {ex.Descriptor}", Current().Location);
+            }
+
+            try
+            {
+                Expect(TokenType.EndFor);
+                Advance(); // Skip /for
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Expected /for in closing directive: {ex.Descriptor}", Current().Location);
+            }
+
+            try
+            {
+                Expect(TokenType.DirectiveEnd);
+                Advance(); // Skip }}
+            }
+            catch (TemplateParsingException ex)
+            {
+                throw new TemplateParsingException($"Unclosed /for directive: {ex.Descriptor}", Current().Location);
+            }
 
             return new ForNode(iteratorName, collection, body, token.Location);
         }
@@ -2954,7 +3129,8 @@ namespace TemplateInterpreter
                     break;
 
                 default:
-                    throw new Exception(string.Format("Unexpected token: {0} at position {1}", token.Type, token.Location.Position));
+                    string expectedTokens = "LeftBracket, ObjectStart, LeftParen, Function, Variable, String, Number, True, or False";
+                    throw new TemplateParsingException($"Unexpected token: {token.Type}. Expected one of: {expectedTokens}", token.Location);
             }
 
             // Handle any invocations that follow the primary expression
@@ -2970,7 +3146,7 @@ namespace TemplateInterpreter
                 var fieldToken = Current();
                 if (fieldToken.Type != TokenType.Field && fieldToken.Type != TokenType.Variable)
                 {
-                    throw new Exception($"Expected field name but got {fieldToken.Type} at position {fieldToken.Location.Position}");
+                    throw new TemplateParsingException($"Expected field name but got {fieldToken.Type}", fieldToken.Location);
                 }
                 expr = new FieldAccessNode(expr, fieldToken.Value, fieldToken.Location);
                 Advance();
@@ -3093,7 +3269,10 @@ namespace TemplateInterpreter
         {
             if (_position >= _tokens.Count)
             {
-                throw new Exception("Unexpected end of input");
+                var lastToken = _tokens.Count > 0 ? _tokens[_tokens.Count - 1] : null;
+                var location = lastToken?.Location ?? new SourceLocation(0, 0, 0);
+
+                throw new TemplateParsingException("Unexpected end of template: the template is incomplete or contains a syntax error", location);
             }
             return _tokens[_position];
         }
@@ -3108,7 +3287,9 @@ namespace TemplateInterpreter
             var token = Current();
             if (token.Type != type)
             {
-                throw new Exception(string.Format("Expected {0} but got {1} at position {2}", type, token.Type, token.Location.Position));
+                throw new TemplateParsingException(
+                    $"Expected <{type.ToString().ToLower()}> but got <{token.Type.ToString().ToLower()}>",
+                    token.Location);
             }
             return token;
         }
@@ -3683,6 +3864,23 @@ namespace TemplateInterpreter
                         throw new Exception("Cannot get first element of empty array");
 
                     return list[0];
+                });
+
+            Register("rest",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                },
+                (context, args) =>
+                {
+                    var array = args[0] as System.Collections.IEnumerable;
+                    if (array == null)
+                        throw new Exception("rest function requires an array argument");
+
+                    var list = array.Cast<object>().ToList();
+                    if (list.Count == 0)
+                        return new List<dynamic>();
+
+                    return list.Skip(1);
                 });
 
             Register("last",

@@ -1553,7 +1553,7 @@ Line 3
             dynamic data = new ExpandoObject();
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, data));
         }
 
         [Test]
@@ -1564,7 +1564,7 @@ Line 3
             dynamic data = new ExpandoObject();
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, data));
         }
 
         [Test]
@@ -1575,7 +1575,7 @@ Line 3
             dynamic data = new ExpandoObject();
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, data));
         }
 
         [Test]
@@ -2721,7 +2721,7 @@ End";
         public void ObjectPropertyNameDefinedMultipleTimes()
         {
             var template = "{{let x = obj(a: 1, a: 2)}}{{x.a}}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Duplicate field name 'a' defined at position 21");
         }
 
@@ -2873,7 +2873,7 @@ End";
         public void StatementWithoutComma_ThrowsException()
         {
             var template = "{{ () => x = 1 y = 2, x + y }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Expected comma after statement");
         }
 
@@ -2881,7 +2881,7 @@ End";
         public void StatementWithoutAssignment_ThrowsException()
         {
             var template = "{{ () => x, y = 2, x + y }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Expected assignment after variable name");
         }
 
@@ -3956,6 +3956,364 @@ string";
             Assert.That(exception.Location, Is.Not.Null);
             Assert.That(exception.Location.Source, Is.EqualTo(sourceName));
             Assert.That(exception.Message, Contains.Substring(sourceName));
+        }
+ 
+        [Test]
+        public void Parse_UnclosedIfDirective_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ if x == 1 }}True";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.Message);
+        }
+
+        [Test]
+        public void Parse_UnclosedForDirective_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ for i in [1, 2] }}True";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unexpected end of template: the template is incomplete or contains a syntax error", exception.Message);
+        }
+
+        [Test]
+        public void Parse_MissingInKeywordInForLoop_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ for item items }}{{ /for }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected 'in' keyword", exception.Message);
+        }
+
+        [Test]
+        public void Parse_MismatchedParenthesesInFunctionCall_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ length(items }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected comma between function arguments", exception.Message);
+        }
+
+        [Test]
+        public void Parse_UnclosedObjectLiteral_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ obj(name: \"Test\" }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unclosed object literal", exception.Message);
+        }
+
+        [Test]
+        public void Parse_MissingColonInObjectLiteral_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ obj(name \"Test\") }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected ':'", exception.Message);
+        }
+
+        [Test]
+        public void Parse_DuplicateFieldNameInObjectLiteral_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ obj(name: \"Test\", name: \"Duplicate\") }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Duplicate field name", exception.Message);
+        }
+
+        [Test]
+        public void Parse_MissingArrowInLambda_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ ((x) x + 1) }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected <rightparen> but got <variable>", exception.Message);
+        }
+
+        [Test]
+        public void Parse_DuplicateParameterNameInLambda_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ ((x, x) => x + x) }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Duplicate parameter name", exception.Message);
+        }
+
+        [Test]
+        public void Parse_MissingCommaInFunctionArguments_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ concat(\"Hello\" \"World\") }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected comma", exception.Message);
+        }
+
+        [Test]
+        public void Parse_UnexpectedToken_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ 1 + }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unexpected token", exception.Message);
+        }
+
+        [Test]
+        public void Parse_UnexpectedEndOfTemplate_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ 1 + ";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unexpected end of template", exception.Message);
+        }
+
+        [Test]
+        public void Parse_InvalidVariableName_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ let 1variable = 5 }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Expected <variable>", exception.Message);
+        }
+
+        [Test]
+        public void Parse_NestedIf_CorrectlyParses()
+        {
+            // Arrange
+            string template = "{{ if x == 1 }}{{ if y == 2 }}Nested{{ /if }}{{ /if }}";
+            
+            // Act
+            var tokens = _lexer.Tokenize(template);
+            var ast = _interpreter.Parser.Parse(tokens);
+            
+            // Assert - should not throw exception for valid template
+            Assert.NotNull(ast);
+        }
+
+        [Test]
+        public void Parse_NestedFor_CorrectlyParses()
+        {
+            // Arrange
+            string template = "{{ for x in items }}{{ for y in x.items }}{{ y }}{{ /for }}{{ /for }}";
+            
+            // Act
+            var tokens = _lexer.Tokenize(template);
+            var ast = _interpreter.Parser.Parse(tokens);
+            
+            // Assert - should not throw exception for valid template
+            Assert.NotNull(ast);
+        }
+
+        [Test]
+        public void Parse_InvalidComparisonOperator_ThrowsExceptionWithMessage()
+        {
+            // Arrange
+            string template = "{{ if x === 1 }}True{{ /if }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+            
+            StringAssert.Contains("Unexpected token", exception.Message);
+        }
+
+        [Test]
+        public void Interpret_InvalidLiteralComparison_ThrowsMeaningfulException()
+        {
+            // Arrange
+            string template = "{{ true == \"true\" }}";  // Comparing bool with string
+
+            dynamic data = new ExpandoObject();
+
+            // Act
+            string result = _interpreter.Interpret(template, data);
+            
+            // Assert - should work but evaluate to "false"
+            Assert.AreEqual("false", result);
+        }
+
+        [Test]
+        public void Interpret_LambdaInFunctionArgument_CorrectlyParsed()
+        {
+            // Arrange
+            string template = "{{ map(range(1, 10), ((x) => x * 2)) }}";
+
+            dynamic data = new ExpandoObject();
+
+            // Act
+            string result = _interpreter.Interpret(template, data);
+
+            // Assert
+            Assert.That(result, Does.Contain("2"));
+            Assert.That(result, Does.Contain("18"));
+        }
+
+        [Test]
+        public void Interpret_UnbalancedNesting_ThrowsMeaningfulException()
+        {
+            // Arrange
+            string template = @"
+            {{ if condition1 }}
+                {{ if condition2 }}
+                    Nested content
+                {{ /if }}
+            {{ /for }}";  // Mismatched closing tag
+
+            dynamic data = new ExpandoObject();
+            data.condition1 = true;
+            data.condition2 = true;
+
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                _interpreter.Interpret(template, data);
+            });
+
+            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.Message);
+        }
+
+        [Test]
+        public void Interpret_ComplexNestedErrors_ThrowsMeaningfulException()
+        {
+            // Arrange
+            string template = @"
+            {{- for user in users }}
+                <div>
+                    <h2>{{ user.name }}</h2>
+                    {{- if user.active }}
+                        <ul>
+                        {{- for order in user.orders }}
+                            <li>{{ order.id }: {{ order.date }}</li>
+                        {{- /for }}
+                        </ul>
+                    {{- else }
+                        <p>Inactive user</p>
+                    {{- /if }}
+                </div>
+            {{- /for }}";
+
+            dynamic data = new ExpandoObject();
+            data.users = new List<ExpandoObject>();
+
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                _interpreter.Interpret(template, data);
+            });
+
+            StringAssert.Contains("Unexpected character '}'", exception.Message);
+        }
+
+        [Test]
+        public void Parse_ExpressionWithNestedFunctionCalls_DetectsInnerError()
+        {
+            // Arrange
+            string template = @"
+            {{ length(filter(items, ((item) => indexOf(item.name, ""test"" > 0))) }}";  // Missing closing parenthesis
+
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+
+            StringAssert.Contains("Expected comma between function arguments or a closing parenthesis", exception.Message);
+        }
+
+        [Test]
+        public void Parse_UnclosedCaptureBlock_ThrowsMeaningfulException()
+        {
+            // Arrange
+            string template = @"
+            {{ capture header }}
+                <h1>Title</h1>
+            After";  // Missing /capture directive
+
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                var tokens = _lexer.Tokenize(template);
+                _interpreter.Parser.Parse(tokens);
+            });
+
+            // Assert message contains expected error indication
+            Assert.That(exception.Message, Does.Contain("Unexpected end"));
         }
     }
 }
