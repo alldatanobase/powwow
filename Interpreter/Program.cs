@@ -143,10 +143,15 @@ namespace TemplateInterpreter
         private readonly int _currentDepth;
         private readonly AstNode _callSite;
 
+        public int MaxDepth { get { return _maxDepth; } }
+        public int CurrentDepth { get { return _currentDepth; } }
+        public ExecutionContext Parent { get { return _parentContext; } }
+        public AstNode CallSite { get { return _callSite; } }
+
         public ExecutionContext(
-            dynamic data, 
-            FunctionRegistry functionRegistry, 
-            ExecutionContext parentContext, 
+            dynamic data,
+            FunctionRegistry functionRegistry,
+            ExecutionContext parentContext,
             int maxDepth,
             AstNode callSite)
         {
@@ -160,10 +165,6 @@ namespace TemplateInterpreter
             _currentDepth = _parentContext != null ? _parentContext.CurrentDepth + 1 : 0;
             CheckStackDepth();
         }
-
-        public int MaxDepth { get { return _maxDepth; } }
-
-        public int CurrentDepth { get { return _currentDepth; } }
 
         public void CheckStackDepth()
         {
@@ -617,6 +618,48 @@ namespace TemplateInterpreter
         {
             Location = location;
             Descriptor = message;
+        }
+    }
+
+    public class TemplateEvaluationException : Exception
+    {
+        public SourceLocation Location { get; }
+        public string Descriptor { get; }
+        public override string StackTrace { get; }
+        public AstNode CallSite { get; }
+
+        public TemplateEvaluationException(
+            string message,
+            ExecutionContext frame)
+            : base(FormatMessage(message, frame.CallSite.Location))
+        {
+            Location = frame.CallSite.Location;
+            Descriptor = message;
+            CallSite = frame.CallSite;
+            StackTrace = FormatStackTrace(message, frame.CallSite.Location, frame);
+        }
+
+        private static string FormatMessage(string message, SourceLocation location)
+        {
+            return $"Error at {location}: {message}";
+        }
+
+        private static string FormatStackTrace(string message, SourceLocation location, ExecutionContext frame)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"Error at {location}: {message}");
+
+            if (frame != null)
+            {
+                var current = frame;
+                while (current != null)
+                {
+                    sb.AppendLine($"  at {current.CallSite.ToStackString()} (line {current.CallSite.Location.Line}, column {current.CallSite.Location.Column}{(current.CallSite.Location.Source != null ? ", " + current.CallSite.Location.Source : "")})");
+                    current = current.Parent;
+                }
+            }
+
+            return sb.ToString();
         }
     }
 
@@ -1544,6 +1587,8 @@ namespace TemplateInterpreter
         {
             return "AstNode";
         }
+
+        public abstract string ToStackString();
     }
 
     public class LiteralNode : AstNode
@@ -1558,6 +1603,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _content;
+        }
+
+        public override string ToStackString()
+        {
+            return "<literal>";
         }
 
         public override string ToString()
@@ -1598,6 +1648,11 @@ namespace TemplateInterpreter
             string templateStr = _includedTemplate == null ? "null" : _includedTemplate.ToString();
             return $"IncludeNode(templateName=\"{_templateName}\", template={templateStr})";
         }
+
+        public override string ToStackString()
+        {
+            return "<include>";
+        }
     }
 
     public class TextNode : AstNode
@@ -1612,6 +1667,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _text;
+        }
+
+        public override string ToStackString()
+        {
+            return $"\"{_text.Replace("\"", "\\\"")}\"";
         }
 
         public override string ToString()
@@ -1634,6 +1694,11 @@ namespace TemplateInterpreter
             return _text;
         }
 
+        public override string ToStackString()
+        {
+            return $"\"{_text.Replace("\"", "\\\"")}\"";
+        }
+
         public override string ToString()
         {
             return $"WhitespaceNode(text=\"{_text.Replace("\"", "\\\"")}\")";
@@ -1652,6 +1717,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _text;
+        }
+
+        public override string ToStackString()
+        {
+            return $"<newline>";
         }
 
         public override string ToString()
@@ -1675,9 +1745,9 @@ namespace TemplateInterpreter
         {
             var parentContext = context;
             var currentContext = new ExecutionContext(
-                parentContext.GetData(), 
-                parentContext.GetFunctionRegistry(), 
-                parentContext, 
+                parentContext.GetData(),
+                parentContext.GetFunctionRegistry(),
+                parentContext,
                 parentContext.MaxDepth,
                 this);
             currentContext.CheckStackDepth();
@@ -1713,7 +1783,9 @@ namespace TemplateInterpreter
                     {
                         if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
                         {
-                            throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
+                            throw new TemplateEvaluationException(
+                                $"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments",
+                                parentContext);
                         }
                         registry.ValidateArguments(function, effectiveArgs);
                         return function.Implementation(currentContext, this, effectiveArgs);
@@ -1733,7 +1805,9 @@ namespace TemplateInterpreter
                 // If not a parameter in any context or parameter isn't a function, try the registry
                 if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
                 {
-                    throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
+                    throw new TemplateEvaluationException(
+                        $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
+                        parentContext);
                 }
                 registry.ValidateArguments(func, effArgs);
                 return func.Implementation(currentContext, this, effArgs);
@@ -1752,6 +1826,12 @@ namespace TemplateInterpreter
                 return registry.LazyFunctionExists(functionInfo.Name, argumentCount);
             }
             return false;
+        }
+
+        public override string ToStackString()
+        {
+            var argsStr = string.Join(", ", _arguments.Select(arg => arg.ToStackString()));
+            return $"{_callable.ToStackString()}({argsStr})";
         }
 
         public override string ToString()
@@ -1808,6 +1888,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return new FunctionInfo(_functionName);
+        }
+
+        public override string ToStackString()
+        {
+            return $"{_functionName}";
         }
 
         public override string ToString()
@@ -1888,6 +1973,11 @@ namespace TemplateInterpreter
             });
         }
 
+        public override string ToStackString()
+        {
+            return $"<lambda>";
+        }
+
         public override string ToString()
         {
             var paramsStr = string.Join(", ", _parameters.Select(p => $"\"{p}\""));
@@ -1915,6 +2005,11 @@ namespace TemplateInterpreter
             return string.Empty; // Let statements don't produce output
         }
 
+        public override string ToStackString()
+        {
+            return $"<let>";
+        }
+
         public override string ToString()
         {
             return $"LetNode(variableName=\"{_variableName}\", expression={_expression.ToString()})";
@@ -1937,6 +2032,11 @@ namespace TemplateInterpreter
             var result = _body.Evaluate(context);
             context.DefineVariable(_variableName, result.ToString());
             return string.Empty; // Capture doesn't output anything directly
+        }
+
+        public override string ToStackString()
+        {
+            return $"<capture>";
         }
 
         public override string ToString()
@@ -1965,6 +2065,11 @@ namespace TemplateInterpreter
             }
 
             return obj;
+        }
+
+        public override string ToStackString()
+        {
+            return $"<obj>";
         }
 
         public override string ToString()
@@ -2020,6 +2125,11 @@ namespace TemplateInterpreter
             return value;
         }
 
+        public override string ToStackString()
+        {
+            return $"{_object.ToStackString()}.{_fieldName}";
+        }
+
         public override string ToString()
         {
             return $"FieldAccessNode(object={_object.ToString()}, fieldName=\"{_fieldName}\")";
@@ -2038,6 +2148,12 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _elements.Select(element => element.Evaluate(context)).ToList();
+        }
+
+        public override string ToStackString()
+        {
+            var elementsStr = string.Join(", ", _elements.Select(e => e.ToStackString()));
+            return $"[{elementsStr}]";
         }
 
         public override string ToString()
@@ -2061,6 +2177,11 @@ namespace TemplateInterpreter
             return context.ResolveValue(_path);
         }
 
+        public override string ToStackString()
+        {
+            return $"{_path}";
+        }
+
         public override string ToString()
         {
             return $"VariableNode(path=\"{_path}\")";
@@ -2079,6 +2200,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _value;
+        }
+
+        public override string ToStackString()
+        {
+            return $"\"{_value.Replace("\"", "\\\"")}\"";
         }
 
         public override string ToString()
@@ -2101,6 +2227,11 @@ namespace TemplateInterpreter
             return _value;
         }
 
+        public override string ToStackString()
+        {
+            return $"{_value}";
+        }
+
         public override string ToString()
         {
             return $"NumberNode(value={_value})";
@@ -2119,6 +2250,11 @@ namespace TemplateInterpreter
         public override dynamic Evaluate(ExecutionContext context)
         {
             return _value;
+        }
+
+        public override string ToStackString()
+        {
+            return $"{_value.ToString().ToLower()}";
         }
 
         public override string ToString()
@@ -2149,6 +2285,11 @@ namespace TemplateInterpreter
                 default:
                     throw new Exception(string.Format("Unknown unary operator: {0}", _operator));
             }
+        }
+
+        public override string ToStackString()
+        {
+            return $"<!{_expression.ToStackString()}>";
         }
 
         public override string ToString()
@@ -2214,6 +2355,11 @@ namespace TemplateInterpreter
             }
         }
 
+        public override string ToStackString()
+        {
+            return $"<{_left.ToStackString()} {_operator} {_right.ToStackString()}>";
+        }
+
         public override string ToString()
         {
             return $"BinaryNode(operator={_operator}, left={_left.ToString()}, right={_right.ToString()})";
@@ -2261,6 +2407,11 @@ namespace TemplateInterpreter
             }
 
             return result.ToString();
+        }
+
+        public override string ToStackString()
+        {
+            return $"<iteration {_iteratorName} in {_collection.ToStackString()}>";
         }
 
         public override string ToString()
@@ -2314,6 +2465,11 @@ namespace TemplateInterpreter
             return string.Empty;
         }
 
+        public override string ToStackString()
+        {
+            return $"<if>";
+        }
+
         public override string ToString()
         {
             var branchesStr = string.Join(", ", _conditionalBranches.Select(b =>
@@ -2345,6 +2501,11 @@ namespace TemplateInterpreter
                 result.Append(TypeHelper.FormatOutput(child.Evaluate(context)));
             }
             return result.ToString();
+        }
+
+        public override string ToStackString()
+        {
+            return $"<Template>";
         }
 
         public override string ToString()

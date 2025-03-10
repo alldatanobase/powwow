@@ -4323,5 +4323,29 @@ string";
 
             Assert.That("2", Is.EqualTo(_interpreter.Interpret(template, _emptyData)));
         }
+
+        [Test]
+        public void NoMatchingOverload_ThrowsAnError()
+        {
+            string template = @"{{ string(length(nonexistent(1))) }}";
+
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("No matching overload found for function 'nonexistent' with the provided arguments", exception.Message);
+        }
+
+        [Test]
+        public void NoMatchingOverloadInLambda_ThrowsAnError()
+        {
+            string template = @"{{ map([[1], [2], [3]], (x) => length(nonexistent(x))) }}";
+
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("No matching overload found for function 'nonexistent' with the provided arguments", exception.Message);
+        }
     }
 }
