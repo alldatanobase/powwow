@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -133,7 +134,7 @@ namespace TemplateInterpreter
 
     public class ExecutionContext
     {
-        private readonly dynamic _data;
+        protected readonly dynamic _data;
         private readonly Dictionary<string, dynamic> _iteratorValues;
         private readonly Dictionary<string, dynamic> _variables;
         private readonly FunctionRegistry _functionRegistry;
@@ -219,6 +220,35 @@ namespace TemplateInterpreter
             return _data;
         }
 
+        protected bool TryGetDataProperty(string propertyName, out dynamic value)
+        {
+            value = null;
+
+            if (_data == null || string.IsNullOrEmpty(propertyName))
+            {
+                return false;
+            }
+
+            if (_data is ExpandoObject)
+            {
+                return ((IDictionary<string, object>)_data).TryGetValue(propertyName, out value);
+            }
+
+            if (_data is IDictionary<string, object> dict)
+            {
+                return dict.TryGetValue(propertyName, out value);
+            }
+
+            PropertyInfo propertyInfo = _data.GetType().GetProperty(propertyName);
+            if (propertyInfo != null)
+            {
+                value = _data[propertyName];
+                return true;
+            }
+
+            return false;
+        }
+
         public virtual bool TryResolveValue(string path, out dynamic value)
         {
             value = null;
@@ -243,17 +273,14 @@ namespace TemplateInterpreter
 
             foreach (var part in parts)
             {
-                try
-                {
-                    current = ((IDictionary<string, object>)current)[part];
-                    if (TypeHelper.IsConvertibleToDecimal(current))
-                    {
-                        current = (decimal)current;
-                    }
-                }
-                catch
+                if (!TryGetDataProperty(part, out current))
                 {
                     return false;
+                }
+
+                if (TypeHelper.IsConvertibleToDecimal(current))
+                {
+                    current = (decimal)current;
                 }
             }
 
@@ -288,6 +315,13 @@ namespace TemplateInterpreter
             _variables = new Dictionary<string, dynamic>();
             _definitionContext = definitionContext;
 
+            if (parameterNames.Count > parameterValues.Count)
+            {
+                var missingCount = parameterNames.Count - parameterValues.Count;
+                var missingParams = string.Join(", ", parameterNames.Skip(parameterValues.Count).Take(missingCount));
+                throw new Exception($"Not enough parameter values provided. Missing values for: {missingParams}");
+            }
+
             // Map parameter names to values
             for (int i = 0; i < parameterNames.Count; i++)
             {
@@ -307,6 +341,12 @@ namespace TemplateInterpreter
 
         public override void DefineVariable(string name, dynamic value)
         {
+            //// Check if already defined as a global data variable
+            //if (_data.ContainsKey(name))
+            //{
+            //    throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
+            //}
+
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
             {
@@ -456,17 +496,14 @@ namespace TemplateInterpreter
 
             foreach (var part in parts)
             {
-                try
-                {
-                    current = ((IDictionary<string, object>)current)[part];
-                    if (TypeHelper.IsConvertibleToDecimal(current))
-                    {
-                        current = (decimal)current;
-                    }
-                }
-                catch
+                if (!TryGetDataProperty(part, out current))
                 {
                     return false;
+                }
+
+                if (TypeHelper.IsConvertibleToDecimal(current))
+                {
+                    current = (decimal)current;
                 }
             }
 
@@ -528,6 +565,16 @@ namespace TemplateInterpreter
                 // If not found in parameters, delegate to parent context
                 return _parentContext.ResolveValue(path);
             }
+        }
+    }
+    public class TemplateParsingException : Exception
+    {
+        public SourceLocation Location { get; }
+
+        public TemplateParsingException(string message, SourceLocation location)
+            : base($"Error at {location}: {message}")
+        {
+            Location = location;
         }
     }
 
@@ -646,6 +693,12 @@ namespace TemplateInterpreter
             }
         }
 
+        private void ThrowLexerError(string message)
+        {
+            var location = new SourceLocation(_line, _column, _position, _sourceName);
+            throw new TemplateParsingException(message, location);
+        }
+
         private PositionState SavePosition()
         {
             return new PositionState(_position, _line, _column);
@@ -730,7 +783,7 @@ namespace TemplateInterpreter
                 UpdatePositionAndTracking(1);
             }
 
-            throw new Exception("Unterminated comment");
+            ThrowLexerError("Unterminated comment");
         }
 
         private void TokenizeDirective()
@@ -754,7 +807,7 @@ namespace TemplateInterpreter
 
                 if (!TryMatch("}}") && !TryMatch("-}}"))
                 {
-                    throw new Exception("Unterminated literal directive");
+                    ThrowLexerError("Unterminated literal directive");
                 }
 
                 if (TryMatch("}}"))
@@ -855,7 +908,7 @@ namespace TemplateInterpreter
                     UpdatePositionAndTracking(1);
                 }
 
-                throw new Exception("Unterminated literal directive");
+                ThrowLexerError("Unterminated literal directive");
             }
 
             while (_position < _input.Length)
@@ -1120,7 +1173,7 @@ namespace TemplateInterpreter
                 }
                 else
                 {
-                    throw new Exception(string.Format("Unexpected character at position {0}: {1}", _position, _input[_position]));
+                    ThrowLexerError($"Unexpected character '{_input[_position]}'");
                 }
             }
         }
@@ -1227,7 +1280,8 @@ namespace TemplateInterpreter
                             result.Append('\t');
                             break;
                         default:
-                            throw new Exception($"Invalid escape sequence '\\{nextChar}' at position {_position}");
+                            ThrowLexerError($"Invalid escape sequence '\\{nextChar}'");
+                            break;
                     }
                     UpdatePositionAndTracking(2); // Skip both the backslash and the escaped character
                 }
@@ -1240,7 +1294,7 @@ namespace TemplateInterpreter
 
             if (_position >= _input.Length)
             {
-                throw new Exception("Unterminated string literal");
+                ThrowLexerError("Unterminated string literal");
             }
 
             AddToken(TokenType.String, result.ToString(), savedPosition);

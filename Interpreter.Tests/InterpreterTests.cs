@@ -1070,8 +1070,8 @@ user:password", result);
             var template = "Hello {{* This comment is not terminated";
 
             // Act & Assert
-            var ex = Assert.Throws<Exception>(() => _lexer.Tokenize(template));
-            Assert.That(ex.Message, Is.EqualTo("Unterminated comment"));
+            var ex = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            Assert.That(ex.Message, Is.EqualTo("Error at line 1, column 41: Unterminated comment"));
         }
 
         [Test]
@@ -1238,7 +1238,7 @@ user:password", result);
         [Test]
         public void InvalidEscapeSequence()
         {
-            Assert.Throws<System.Exception>(() =>
+            Assert.Throws<TemplateParsingException>(() =>
                 _lexer.Tokenize("{{\"Hello\\xWorld\"}}")
             );
         }
@@ -1246,7 +1246,7 @@ user:password", result);
         [Test]
         public void UnterminatedString()
         {
-            Assert.Throws<System.Exception>(() =>
+            Assert.Throws<TemplateParsingException>(() =>
                 _lexer.Tokenize("{{\"Hello World")
             );
         }
@@ -1254,7 +1254,7 @@ user:password", result);
         [Test]
         public void EscapeAtEndOfString()
         {
-            Assert.Throws<System.Exception>(() =>
+            Assert.Throws<TemplateParsingException>(() =>
                 _lexer.Tokenize("{{\"Hello World\\")
             );
         }
@@ -1380,7 +1380,7 @@ user:password", result);
         public void Literal_UnterminatedDirective_ShouldThrowException()
         {
             var template = "{{literal}}Unterminated content";
-            Assert.Throws<System.Exception>(() =>
+            Assert.Throws<TemplateParsingException>(() =>
                 _interpreter.Interpret(template, new ExpandoObject())
             );
         }
@@ -1389,7 +1389,7 @@ user:password", result);
         public void Literal_MismatchedDirectives_ShouldThrowException()
         {
             var template = "{{literal}}{{/if}}";
-            Assert.Throws<System.Exception>(() =>
+            Assert.Throws<TemplateParsingException>(() =>
                 _interpreter.Interpret(template, new ExpandoObject())
             );
         }
@@ -2784,9 +2784,51 @@ End";
             var data = new ExpandoObject() as IDictionary<string, object>;
             data["x"] = "hello world";
 
-            var template = "{{ (a) => x = 'foo', concat(a, x) }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            var template = "{{ ((a) => x = [\"foo\"], concat(a, x))([1]) }}";
+            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void DataFieldConflictWithGlobal_ThrowsException()
+        { 
+            var data = new ExpandoObject() as IDictionary<string, object>;
+            data["x"] = "hello world";
+
+            var template = "{{ let x = 3 }}";
+            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void DataFieldConflictWithGlobalInIterator_ThrowsException()
+        { 
+            var data = new ExpandoObject() as IDictionary<string, object>;
+            data["x"] = "hello world";
+
+            var template = "{{ for i in [1, 2] }}{{ let x = 3 }}{{ /for }}";
+            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+                "Cannot define variable 'x' as it conflicts with an existing variable or field");
+        }
+
+        [Test]
+        public void Interpret_LambdaWithMissingParameterValues_ThrowsExceptionWithCorrectMessage()
+        {
+            // Arrange
+            // Template that defines a lambda function with 4 parameters but only calls it with 2 arguments
+            string template = @"
+{{ let myFunc = (param1, param2, param3, param4) => param1 + param2 + param3 + param4 }}
+{{ myFunc(1, 2) }}";
+
+            // Act & Assert
+            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
+            
+            // Verify the exception message contains information about missing parameters
+            Assert.That(exception.Message, Does.Contain("Missing values for:"));
+            Assert.That(exception.Message, Does.Contain("param3"));
+            Assert.That(exception.Message, Does.Contain("param4"));
+            Assert.That(exception.Message, Does.Not.Contain("param1")); // These params have values
+            Assert.That(exception.Message, Does.Not.Contain("param2"));
         }
 
         [Test]
@@ -3778,6 +3820,142 @@ Hello, {{ name }}!
         {
             var template = @"{{ let fn = (x) => p = 2, (y) => q = 3, (z) => r = 1, (p * q + r) + (x * y + z) }}{{ fn(2)(3)(1) }}";
             Assert.That(_interpreter.Interpret(template, _emptyData), Is.EqualTo("14"));
+        }
+
+        [Test]
+        public void Tokenize_UnterminatedString_ThrowsTemplateParsingException()
+        {
+            // Arrange
+            string template = "{{ \"This string is not terminated }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unterminated string literal"));
+            Assert.That(exception.Location, Is.Not.Null);
+            Assert.That(exception.Location.Line, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Tokenize_InvalidEscapeSequence_ThrowsTemplateParsingException()
+        {
+            // Arrange
+            string template = "{{ \"String with invalid escape: \\z\" }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Invalid escape sequence"));
+            Assert.That(exception.Location, Is.Not.Null);
+        }
+
+        [Test]
+        public void Tokenize_UnterminatedComment_ThrowsTemplateParsingException()
+        {
+            // Arrange
+            string template = "{{* This comment is not terminated }}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unterminated comment"));
+            Assert.That(exception.Location, Is.Not.Null);
+        }
+
+        [Test]
+        public void Tokenize_UnterminatedLiteral_ThrowsTemplateParsingException()
+        {
+            // Arrange
+            string template = "{{ literal }}Some literal content";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unterminated literal directive"));
+            Assert.That(exception.Location, Is.Not.Null);
+        }
+
+        [Test]
+        public void Tokenize_UnexpectedCharacter_ThrowsTemplateParsingException()
+        {
+            // Arrange
+            string template = "{{ name @ }}";  // @ is unexpected
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unexpected character"));
+            Assert.That(exception.Location, Is.Not.Null);
+        }
+
+        [Test]
+        public void Tokenize_MultilineTemplate_CorrectLineAndColumnInError()
+        {
+            // Arrange
+            string template = @"
+First line
+Second line
+{{ ""unterminated 
+string";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unterminated string literal"));
+            Assert.That(exception.Location, Is.Not.Null);
+            Assert.That(exception.Location.Line, Is.EqualTo(5)); // Should be line 4
+        }
+
+        [Test]
+        public void Tokenize_NestedExpression_ErrorLocationIsCorrect()
+        {
+            // Arrange
+            string template = @"{{ 
+   for item in items 
+      {{ if item == ""value }}
+         {{ item }
+      {{ /if }}
+   {{ /for }}
+}}";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template));
+            
+            // Verify exception details - assuming the error is the unterminated string or missing brace
+            Assert.That(exception.Location, Is.Not.Null);
+        }
+
+        [Test]
+        public void Tokenize_EmptyTemplate_NoException()
+        {
+            // Arrange
+            string template = "";
+            
+            // Act & Assert
+            Assert.DoesNotThrow(() => _lexer.Tokenize(template));
+        }
+
+        [Test]
+        public void Tokenize_WithSourceName_IncludesSourceNameInError()
+        {
+            // Arrange
+            string template = "{{ \"unterminated string }}";
+            string sourceName = "test_template.html";
+            
+            // Act & Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => _lexer.Tokenize(template, sourceName));
+            
+            // Verify exception details
+            Assert.That(exception.Message, Contains.Substring("Unterminated string literal"));
+            Assert.That(exception.Location, Is.Not.Null);
+            Assert.That(exception.Location.Source, Is.EqualTo(sourceName));
+            Assert.That(exception.Message, Contains.Substring(sourceName));
         }
     }
 }
