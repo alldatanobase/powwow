@@ -4315,5 +4315,13 @@ string";
             // Assert message contains expected error indication
             Assert.That(exception.Message, Does.Contain("Unexpected end"));
         }
+
+        [Test]
+        public void TestStackDepthWithBuiltInFunctions()
+        {
+            string template = @"{{ string(length(range(1, 3))) }}";
+
+            Assert.That("2", Is.EqualTo(_interpreter.Interpret(template, _emptyData)));
+        }
     }
 }

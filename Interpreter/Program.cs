@@ -249,6 +249,54 @@ namespace TemplateInterpreter
             return false;
         }
 
+        public virtual bool TryResolveNonShadowableValue(string path, out dynamic value)
+        {
+            value = null;
+            var parts = path.Split('.');
+            dynamic current = null;
+
+            if (_iteratorValues.ContainsKey(parts[0]))
+            {
+                current = _iteratorValues[parts[0]];
+                parts = parts.Skip(1).ToArray();
+            }
+            else if (_variables.TryGetValue(parts[0], out current))
+            {
+                parts = parts.Skip(1).ToArray();
+            }
+            else if (TryGetDataProperty(parts[0], out current))
+            {
+                current = _data;
+            }
+            else
+            {
+                if (_parentContext != null)
+                {
+                    return _parentContext.TryResolveNonShadowableValue(path, out value);
+                }
+                return false;
+            }
+
+            foreach (var part in parts)
+            {
+                try
+                {
+                    current = ((IDictionary<string, object>)current)[part];
+                    if (TypeHelper.IsConvertibleToDecimal(current))
+                    {
+                        current = (decimal)current;
+                    }
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            value = current;
+            return true;
+        }
+
         public virtual bool TryResolveValue(string path, out dynamic value)
         {
             value = null;
@@ -266,9 +314,17 @@ namespace TemplateInterpreter
                 current = _variables[parts[0]];
                 parts = parts.Skip(1).ToArray();
             }
-            else
+            else if (TryGetDataProperty(parts[0], out current))
             {
                 current = _data;
+            }
+            else if (_parentContext != null)
+            {
+                return _parentContext.TryResolveValue(path, out value);
+            }
+            else
+            {
+                return false;
             }
 
             foreach (var part in parts)
@@ -353,14 +409,7 @@ namespace TemplateInterpreter
                 throw new Exception($"Cannot define variable '{name}' as it conflicts with a parameter name");
             }
 
-            if (_parentContext is LambdaExecutionContext lec)
-            {
-                if (lec.TryResolveNonShadowableValue(name, out _))
-                {
-                    throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
-                }
-            }
-            else if (_parentContext.TryResolveValue(name, out _))
+            if (_parentContext.TryResolveNonShadowableValue(name, out _))
             {
                 throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
             }
@@ -401,7 +450,7 @@ namespace TemplateInterpreter
             return false;
         }
 
-        public bool TryResolveNonShadowableValue(string path, out dynamic value)
+        public override bool TryResolveNonShadowableValue(string path, out dynamic value)
         {
             value = null;
             var parts = path.Split('.');
@@ -417,22 +466,10 @@ namespace TemplateInterpreter
             }
             else
             {
-                dynamic descendentValue;
-
-                if (_parentContext is LambdaExecutionContext lec)
+                if (_parentContext != null)
                 {
-                    if (lec.TryResolveNonShadowableValue(path, out descendentValue))
-                    {
-                        value = descendentValue;
-                        return true;
-                    }
+                    return _parentContext.TryResolveNonShadowableValue(path, out value);
                 }
-                else if (_parentContext.TryResolveValue(path, out descendentValue))
-                {
-                    value = descendentValue;
-                    return true;
-                }
-
                 return false;
             }
 
@@ -1628,20 +1665,27 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            context.CheckStackDepth();
+            var parentContext = context;
+            var currentContext = new ExecutionContext(
+                parentContext.GetData(), 
+                parentContext.GetFunctionRegistry(), 
+                parentContext, 
+                parentContext.MaxDepth);
+            currentContext.CheckStackDepth();
 
             // Evaluate the callable, but handle special cases
-            var callable = _callable.Evaluate(context);
+            var callable = _callable.Evaluate(currentContext);
 
-            var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), context) ?
-                _arguments.Select(arg => new LazyValue(arg, context)).ToList<dynamic>() :
-                _arguments.Select(arg => arg.Evaluate(context)).ToList();
+            var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), currentContext) ?
+                _arguments.Select(arg => new LazyValue(arg, currentContext)).ToList<dynamic>() :
+                _arguments.Select(arg => arg.Evaluate(currentContext)).ToList();
 
             // Now handle the callable based on its type
             if (callable is Func<ExecutionContext, List<dynamic>, dynamic> lambdaFunc)
             {
                 // Direct lambda invocation
-                return lambdaFunc(context, args);
+                // Lambda establishes its own new child context
+                return lambdaFunc(parentContext, args);
             }
             else if (callable is FunctionInfo functionInfo)
             {
@@ -1653,7 +1697,8 @@ namespace TemplateInterpreter
                 {
                     if (paramValue is Func<ExecutionContext, List<dynamic>, dynamic> paramFunc)
                     {
-                        return paramFunc(context, args);
+                        // Lambda establishes its own new child context
+                        return paramFunc(parentContext, args);
                     }
                     else if (paramValue is FunctionInfo paramFuncInfo)
                     {
@@ -1662,7 +1707,7 @@ namespace TemplateInterpreter
                             throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
                         }
                         registry.ValidateArguments(function, effectiveArgs);
-                        return function.Implementation(context, effectiveArgs);
+                        return function.Implementation(currentContext, effectiveArgs);
                     }
                 }
 
@@ -1671,7 +1716,8 @@ namespace TemplateInterpreter
                 {
                     if (variableValue is Func<ExecutionContext, List<dynamic>, dynamic> variableFunc)
                     {
-                        return variableFunc(context, args);
+                        // Lambda establishes its own new child context
+                        return variableFunc(parentContext, args);
                     }
                 }
 
@@ -1681,7 +1727,7 @@ namespace TemplateInterpreter
                     throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
                 }
                 registry.ValidateArguments(func, effArgs);
-                return func.Implementation(context, effArgs);
+                return func.Implementation(currentContext, effArgs);
             }
 
 
@@ -3360,7 +3406,7 @@ namespace TemplateInterpreter
                     {
                         throw new Exception("length function requires an enumerable argument");
                     }
-                    return enumerable.Cast<object>().Count();
+                    return Convert.ToDecimal(enumerable.Cast<object>().Count());
                 });
 
             Register("length",
@@ -3374,7 +3420,7 @@ namespace TemplateInterpreter
                     {
                         throw new Exception("length function requires a string argument");
                     }
-                    return str.Length;
+                    return Convert.ToDecimal(str.Length);
                 });
 
             Register("empty",
