@@ -1599,7 +1599,7 @@ Line 3
             _interpreter.RegisterFunction(
                 "greet",
                 new List<ParameterDefinition> { new ParameterDefinition(typeof(string)) },
-                (context, args) => $"Hello, {args[0]}!");
+                (context, callSite, args) => $"Hello, {args[0]}!");
 
             var template = "{{capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
             dynamic data = new ExpandoObject();

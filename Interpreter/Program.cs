@@ -44,7 +44,7 @@ namespace TemplateInterpreter
             RegisterDataverseFunctions();
         }
 
-        public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<ExecutionContext, List<dynamic>, dynamic> implementation)
+        public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation)
         {
             _functionRegistry.Register(name, parameterTypes, implementation);
         }
@@ -55,7 +55,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     if (_dataverseService == null)
                     {
@@ -84,7 +84,7 @@ namespace TemplateInterpreter
                 ast = ProcessIncludes(ast);
             }
 
-            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null, _maxRecursionDepth));
+            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null, _maxRecursionDepth, ast));
         }
 
         private AstNode ProcessIncludes(AstNode node)
@@ -141,8 +141,14 @@ namespace TemplateInterpreter
         protected readonly ExecutionContext _parentContext;
         protected readonly int _maxDepth;
         private readonly int _currentDepth;
+        private readonly AstNode _callSite;
 
-        public ExecutionContext(dynamic data, FunctionRegistry functionRegistry, ExecutionContext parentContext, int maxDepth)
+        public ExecutionContext(
+            dynamic data, 
+            FunctionRegistry functionRegistry, 
+            ExecutionContext parentContext, 
+            int maxDepth,
+            AstNode callSite)
         {
             _data = data;
             _iteratorValues = new Dictionary<string, dynamic>();
@@ -150,6 +156,7 @@ namespace TemplateInterpreter
             _functionRegistry = functionRegistry;
             _parentContext = parentContext;
             _maxDepth = maxDepth;
+            _callSite = callSite;
             _currentDepth = _parentContext != null ? _parentContext.CurrentDepth + 1 : 0;
             CheckStackDepth();
         }
@@ -190,9 +197,9 @@ namespace TemplateInterpreter
             _variables[name] = value;
         }
 
-        public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value)
+        public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value, AstNode callSite)
         {
-            var newContext = new ExecutionContext(_data, _functionRegistry, this, MaxDepth);
+            var newContext = new ExecutionContext(_data, _functionRegistry, this, MaxDepth, callSite);
 
             // Copy variables to new context
             foreach (var variable in _variables)
@@ -364,8 +371,9 @@ namespace TemplateInterpreter
             ExecutionContext parentContext,
             ExecutionContext definitionContext,
             List<string> parameterNames,
-            List<dynamic> parameterValues)
-            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth)
+            List<dynamic> parameterValues,
+            AstNode node)
+            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth, node)
         {
             _parameters = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();
@@ -1670,7 +1678,8 @@ namespace TemplateInterpreter
                 parentContext.GetData(), 
                 parentContext.GetFunctionRegistry(), 
                 parentContext, 
-                parentContext.MaxDepth);
+                parentContext.MaxDepth,
+                this);
             currentContext.CheckStackDepth();
 
             // Evaluate the callable, but handle special cases
@@ -1681,11 +1690,11 @@ namespace TemplateInterpreter
                 _arguments.Select(arg => arg.Evaluate(currentContext)).ToList();
 
             // Now handle the callable based on its type
-            if (callable is Func<ExecutionContext, List<dynamic>, dynamic> lambdaFunc)
+            if (callable is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> lambdaFunc)
             {
                 // Direct lambda invocation
                 // Lambda establishes its own new child context
-                return lambdaFunc(parentContext, args);
+                return lambdaFunc(parentContext, this, args);
             }
             else if (callable is FunctionInfo functionInfo)
             {
@@ -1695,10 +1704,10 @@ namespace TemplateInterpreter
                 if (context is LambdaExecutionContext lambdaContext &&
                     lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
                 {
-                    if (paramValue is Func<ExecutionContext, List<dynamic>, dynamic> paramFunc)
+                    if (paramValue is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> paramFunc)
                     {
                         // Lambda establishes its own new child context
-                        return paramFunc(parentContext, args);
+                        return paramFunc(parentContext, this, args);
                     }
                     else if (paramValue is FunctionInfo paramFuncInfo)
                     {
@@ -1707,17 +1716,17 @@ namespace TemplateInterpreter
                             throw new Exception($"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments");
                         }
                         registry.ValidateArguments(function, effectiveArgs);
-                        return function.Implementation(currentContext, effectiveArgs);
+                        return function.Implementation(currentContext, this, effectiveArgs);
                     }
                 }
 
                 // Check if this is a variable that contains a function
                 if (context.TryResolveValue(functionInfo.Name, out var variableValue))
                 {
-                    if (variableValue is Func<ExecutionContext, List<dynamic>, dynamic> variableFunc)
+                    if (variableValue is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> variableFunc)
                     {
                         // Lambda establishes its own new child context
-                        return variableFunc(parentContext, args);
+                        return variableFunc(parentContext, this, args);
                     }
                 }
 
@@ -1727,7 +1736,7 @@ namespace TemplateInterpreter
                     throw new Exception($"No matching overload found for function '{functionInfo.Name}' with the provided arguments");
                 }
                 registry.ValidateArguments(func, effArgs);
-                return func.Implementation(currentContext, effArgs);
+                return func.Implementation(currentContext, this, effArgs);
             }
 
 
@@ -1863,10 +1872,10 @@ namespace TemplateInterpreter
 
             // Return a delegate that can be called later with parameters
             // Context is captured here, during evaluation, not during parsing
-            return new Func<ExecutionContext, List<dynamic>, dynamic>((callerContext, args) =>
+            return new Func<ExecutionContext, AstNode, List<dynamic>, dynamic>((callerContext, callSite, args) =>
             {
                 // Create a new context that includes both captured context and new parameters
-                var lambdaContext = new LambdaExecutionContext(callerContext, definitionContext, _parameters, args);
+                var lambdaContext = new LambdaExecutionContext(callerContext, definitionContext, _parameters, args, callSite);
 
                 // Execute each statement in order
                 foreach (var statement in _statements)
@@ -2247,7 +2256,7 @@ namespace TemplateInterpreter
             var result = new StringBuilder();
             foreach (var item in collection)
             {
-                var iterationContext = context.CreateIteratorContext(_iteratorName, item);
+                var iterationContext = context.CreateIteratorContext(_iteratorName, item, this);
                 result.Append(_body.Evaluate(iterationContext));
             }
 
@@ -3359,13 +3368,13 @@ namespace TemplateInterpreter
     {
         public string Name { get; }
         public List<ParameterDefinition> Parameters { get; }
-        public Func<ExecutionContext, List<dynamic>, dynamic> Implementation { get; }
+        public Func<ExecutionContext, AstNode, List<dynamic>, dynamic> Implementation { get; }
         public bool IsLazilyEvaluated { get; }
 
         public FunctionDefinition(
             string name,
             List<ParameterDefinition> parameters,
-            Func<ExecutionContext, List<dynamic>, dynamic> implementation,
+            Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation,
             bool isLazilyEvaluated)
         {
             Name = name;
@@ -3399,7 +3408,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var enumerable = args[0] as System.Collections.IEnumerable;
                     if (enumerable == null)
@@ -3413,7 +3422,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0] as string;
                     if (str == null)
@@ -3427,7 +3436,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0] as string;
                     if (str == null)
@@ -3442,7 +3451,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str1 = args[0]?.ToString() ?? "";
                     var str2 = args[1]?.ToString() ?? "";
@@ -3454,7 +3463,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var searchStr = args[1]?.ToString() ?? "";
@@ -3466,7 +3475,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(object)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     if (args[0] == null)
                         return false;
@@ -3498,7 +3507,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var searchStr = args[1]?.ToString() ?? "";
@@ -3510,7 +3519,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var searchStr = args[1]?.ToString() ?? "";
@@ -3521,7 +3530,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     return str.ToUpper();
@@ -3531,7 +3540,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     return str.ToLower();
@@ -3541,7 +3550,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     return str.Trim();
@@ -3552,7 +3561,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var searchStr = args[1]?.ToString() ?? "";
@@ -3564,7 +3573,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var searchStr = args[1]?.ToString() ?? "";
@@ -3577,7 +3586,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(decimal)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(-1)) // Optional end index
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0]?.ToString() ?? "";
                     var startIndex = Convert.ToInt32(args[1]);
@@ -3599,7 +3608,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(decimal)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = Convert.ToDecimal(args[0]);
                     var end = Convert.ToDecimal(args[1]);
@@ -3637,7 +3646,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3671,7 +3680,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3717,7 +3726,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3751,7 +3760,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3785,7 +3794,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3819,7 +3828,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal), true, new decimal(1))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var start = args[0] as DateTime?;
                     var end = args[1] as DateTime?;
@@ -3850,12 +3859,12 @@ namespace TemplateInterpreter
             Register("filter",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var collection = args[0] as System.Collections.IEnumerable;
-                    var predicate = args[1] as Func<ExecutionContext, List<dynamic>, dynamic>;
+                    var predicate = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
 
                     if (collection == null || predicate == null)
                     {
@@ -3865,7 +3874,7 @@ namespace TemplateInterpreter
                     var result = new List<dynamic>();
                     foreach (var item in collection)
                     {
-                        var predicateResult = predicate(context, new List<dynamic> { item });
+                        var predicateResult = predicate(context, callSite, new List<dynamic> { item });
                         if (Convert.ToBoolean(predicateResult))
                         {
                             result.Add(item);
@@ -3880,7 +3889,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     var index = Convert.ToInt32(args[1]);
@@ -3899,7 +3908,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
@@ -3916,7 +3925,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
@@ -3933,7 +3942,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
@@ -3950,7 +3959,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
@@ -3965,7 +3974,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(LazyValue)),
                     new ParameterDefinition(typeof(LazyValue))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var condition = args[0] as LazyValue;
                     var trueBranch = args[1] as LazyValue;
@@ -3982,7 +3991,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     var delimiter = args[1] as string;
@@ -4000,7 +4009,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(string)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0] as string;
                     var delimiter = args[1] as string;
@@ -4016,31 +4025,31 @@ namespace TemplateInterpreter
             Register("map",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
-                    var mapper = args[1] as Func<ExecutionContext, List<dynamic>, dynamic>;
+                    var mapper = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
 
                     if (array == null || mapper == null)
                         throw new Exception("map function requires an array and a function");
 
                     return array.Cast<object>()
-                        .Select(item => mapper(context, new List<dynamic> { item }))
+                        .Select(item => mapper(context, callSite, new List<dynamic> { item }))
                         .ToList();
                 });
 
             Register("reduce",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, List<dynamic>, dynamic>)),
+                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>)),
                     new ParameterDefinition(typeof(object))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
-                    var reducer = args[1] as Func<ExecutionContext, List<dynamic>, dynamic>;
+                    var reducer = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
                     var initialValue = args[2];
 
                     if (array == null || reducer == null)
@@ -4048,7 +4057,7 @@ namespace TemplateInterpreter
 
                     return array.Cast<object>()
                         .Aggregate((object)initialValue, (acc, curr) =>
-                            reducer(context, new List<dynamic> { acc, curr }));
+                            reducer(context, callSite, new List<dynamic> { acc, curr }));
                 });
 
             Register("concat",
@@ -4056,7 +4065,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var first = args[0] as System.Collections.IEnumerable;
                     var second = args[1] as System.Collections.IEnumerable;
@@ -4075,7 +4084,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     int count = Convert.ToInt32(args[1]);
@@ -4094,7 +4103,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     int count = Convert.ToInt32(args[1]);
@@ -4109,7 +4118,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
@@ -4123,7 +4132,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(bool))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     var ascending = Convert.ToBoolean(args[1]);
@@ -4138,18 +4147,18 @@ namespace TemplateInterpreter
             Register("order",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
-                    var comparer = args[1] as Func<ExecutionContext, List<dynamic>, dynamic>;
+                    var comparer = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
 
                     if (array == null || comparer == null)
                         throw new Exception("order function requires an array and a comparison function");
 
                     return array.Cast<object>()
-                        .OrderBy(x => x, new DynamicComparer(context, comparer))
+                        .OrderBy(x => x, new DynamicComparer(context, callSite, comparer))
                         .ToList();
                 });
 
@@ -4158,7 +4167,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(System.Collections.IEnumerable)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     var fieldName = args[1] as string;
@@ -4210,7 +4219,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(object)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var obj = args[0];
                     var fieldName = args[1] as string;
@@ -4251,7 +4260,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(object))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var obj = args[0];
                     if (obj == null)
@@ -4278,7 +4287,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(decimal)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number1 = Convert.ToInt32(args[0]);
                     var number2 = Convert.ToInt32(args[1]);
@@ -4293,7 +4302,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number = Convert.ToDecimal(args[0]);
                     return Math.Floor(number);
@@ -4303,7 +4312,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number = Convert.ToDecimal(args[0]);
                     return Math.Ceiling(number);
@@ -4313,7 +4322,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number = Convert.ToDecimal(args[0]);
                     return Math.Round(number, 0);
@@ -4324,7 +4333,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(decimal)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number = Convert.ToDecimal(args[0]);
                     var decimals = Convert.ToInt32(args[1]);
@@ -4339,7 +4348,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var number = Convert.ToDecimal(args[0]);
                     return number.ToString();
@@ -4349,7 +4358,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(bool))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var boolean = Convert.ToBoolean(args[0]);
                     return boolean.ToString().ToLower(); // returning "true" or "false" in lowercase
@@ -4359,7 +4368,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0] as string;
 
@@ -4376,7 +4385,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var str = args[0] as string;
 
@@ -4390,7 +4399,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var dateStr = args[0] as string;
                     if (string.IsNullOrEmpty(dateStr))
@@ -4411,7 +4420,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var format = args[1] as string;
@@ -4436,7 +4445,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var years = Convert.ToInt32(args[1]);
@@ -4459,7 +4468,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var months = Convert.ToInt32(args[1]);
@@ -4482,7 +4491,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var days = Convert.ToInt32(args[1]);
@@ -4505,7 +4514,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var hours = Convert.ToInt32(args[1]);
@@ -4528,7 +4537,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var minutes = Convert.ToInt32(args[1]);
@@ -4551,7 +4560,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(DateTime)),
                     new ParameterDefinition(typeof(decimal))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var date = args[0] as DateTime?;
                     var seconds = Convert.ToInt32(args[1]);
@@ -4571,14 +4580,14 @@ namespace TemplateInterpreter
 
             Register("now",
                 new List<ParameterDefinition>(),
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     return DateTime.Now;
                 });
 
             Register("utcNow",
                 new List<ParameterDefinition>(),
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     return DateTime.UtcNow;
                 });
@@ -4587,7 +4596,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var uriString = args[0] as string;
                     if (string.IsNullOrEmpty(uriString))
@@ -4607,7 +4616,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var html = args[0] as string;
 
@@ -4625,7 +4634,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var html = args[0] as string;
 
@@ -4643,7 +4652,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var url = args[0] as string;
 
@@ -4661,7 +4670,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var url = args[0] as string;
 
@@ -4679,7 +4688,7 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(string))
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var jsonString = args[0] as string;
                     if (string.IsNullOrEmpty(jsonString))
@@ -4700,7 +4709,7 @@ namespace TemplateInterpreter
                     new ParameterDefinition(typeof(object)),
                     new ParameterDefinition(typeof(bool), true, false)
                 },
-                (context, args) =>
+                (context, callSite, args) =>
                 {
                     var obj = args[0];
                     var formatted = Convert.ToBoolean(args[1]);
@@ -4891,7 +4900,7 @@ namespace TemplateInterpreter
         public void Register(
             string name,
             List<ParameterDefinition> parameters,
-            Func<ExecutionContext, List<dynamic>, dynamic> implementation,
+            Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation,
             bool isLazilyEvaluated = false)
         {
             var definition = new FunctionDefinition(name, parameters, implementation, isLazilyEvaluated);
@@ -5171,7 +5180,7 @@ namespace TemplateInterpreter
                 return string.Concat("{",
                     string.Join(", ", expando.Select(kvp => string.Concat(kvp.Key, ": ", FormatOutput(kvp.Value, true)))), "}");
             }
-            else if (evaluated is Func<ExecutionContext, List<object>, object> func)
+            else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
                 return "lambda()";
             }
@@ -5227,7 +5236,7 @@ namespace TemplateInterpreter
                 return string.Concat("{",
                     string.Join(",", expando.Select(kvp => string.Concat("\"", kvp.Key, "\"", ":", JsonSerialize(kvp.Value)))), "}");
             }
-            else if (evaluated is Func<ExecutionContext, List<object>, object> func)
+            else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
                 return "\"lambda()\"";
             }
@@ -5271,18 +5280,20 @@ namespace TemplateInterpreter
 
     public class DynamicComparer : IComparer<object>
     {
-        private readonly Func<ExecutionContext, List<dynamic>, dynamic> _comparer;
+        private readonly Func<ExecutionContext, AstNode, List<dynamic>, dynamic> _comparer;
         private readonly ExecutionContext _context;
+        private readonly AstNode _callSite;
 
-        public DynamicComparer(ExecutionContext context, Func<ExecutionContext, List<dynamic>, dynamic> comparer)
+        public DynamicComparer(ExecutionContext context, AstNode callSite, Func<ExecutionContext, AstNode, List<dynamic>, dynamic> comparer)
         {
             _comparer = comparer;
             _context = context;
+            _callSite = callSite;
         }
 
         public int Compare(object x, object y)
         {
-            var result = Convert.ToDecimal(_comparer(_context, new List<dynamic> { x, y }));
+            var result = Convert.ToDecimal(_comparer(_context, _callSite, new List<dynamic> { x, y }));
             return Math.Sign(result);
         }
     }
