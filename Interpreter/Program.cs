@@ -1658,7 +1658,13 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException($"Template '{_templateName}' could not been resolved", context);
             }
-            return _includedTemplate.Evaluate(context);
+            var currentContext = new ExecutionContext(
+                context.GetData(),
+                context.GetFunctionRegistry(),
+                context,
+                context.MaxDepth,
+                this);
+            return _includedTemplate.Evaluate(currentContext);
         }
 
         public override string ToString()
