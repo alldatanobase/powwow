@@ -59,14 +59,14 @@ namespace TemplateInterpreter
                 {
                     if (_dataverseService == null)
                     {
-                        throw new Exception("Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.");
+                        throw new TemplateEvaluationException("Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.", context);
                     }
 
                     var fetchXml = args[0] as string;
 
                     if (string.IsNullOrEmpty(fetchXml))
                     {
-                        throw new Exception("fetch function requires a non-empty FetchXML string");
+                        throw new TemplateEvaluationException("fetch function requires a non-empty FetchXML string", context);
                     }
 
                     return _dataverseService.RetrieveMultiple(fetchXml);
@@ -170,28 +170,18 @@ namespace TemplateInterpreter
         {
             if (_currentDepth >= _maxDepth)
             {
-                throw new Exception($"Maximum call stack depth {_maxDepth} has been exceeded.");
+                throw new TemplateEvaluationException($"Maximum call stack depth {_maxDepth} has been exceeded.", this);
             }
         }
 
         public virtual void DefineVariable(string name, dynamic value)
         {
-            // Check if already defined as a variable
-            if (_variables.ContainsKey(name))
+            // Check if already defined as a variable, an iterator variable, or defined in the data context
+            if (_variables.ContainsKey(name) || _iteratorValues.ContainsKey(name) || TryResolveValue(name, out _))
             {
-                throw new Exception($"Variable '{name}' is already defined");
-            }
-
-            // Check if defined as an iterator value
-            if (_iteratorValues.ContainsKey(name))
-            {
-                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing iterator");
-            }
-
-            // Check if defined in the data context
-            if (TryResolveValue(name, out _))
-            {
-                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing data field");
+                throw new TemplateEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    this);
             }
 
             // If we get here, the name is safe to use
@@ -358,7 +348,7 @@ namespace TemplateInterpreter
             {
                 return value;
             }
-            throw new Exception($"Unable to resolve path: {path}");
+            throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
         }
     }
 
@@ -384,7 +374,7 @@ namespace TemplateInterpreter
             {
                 var missingCount = parameterNames.Count - parameterValues.Count;
                 var missingParams = string.Join(", ", parameterNames.Skip(parameterValues.Count).Take(missingCount));
-                throw new Exception($"Not enough parameter values provided. Missing values for: {missingParams}");
+                throw new TemplateEvaluationException($"Not enough parameter values provided. Missing values for: {missingParams}", this);
             }
 
             // Map parameter names to values
@@ -409,18 +399,24 @@ namespace TemplateInterpreter
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
             {
-                throw new Exception($"Cannot reassign variable '{name}' in lambda function");
+                throw new TemplateEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    this);
             }
 
             // Check if defined as a parameter
             if (_parameters.ContainsKey(name))
             {
-                throw new Exception($"Cannot define variable '{name}' as it conflicts with a parameter name");
+                throw new TemplateEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with a parameter name", 
+                    this);
             }
 
             if (_parentContext.TryResolveNonShadowableValue(name, out _))
             {
-                throw new Exception($"Cannot define variable '{name}' as it conflicts with an existing variable or field");
+                throw new TemplateEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    this);
             }
 
             _variables[name] = value;
@@ -569,7 +565,7 @@ namespace TemplateInterpreter
                     }
                     catch
                     {
-                        throw new Exception($"Unable to resolve path: {path}");
+                        throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
                     }
                 }
 
@@ -588,7 +584,7 @@ namespace TemplateInterpreter
                     }
                     catch
                     {
-                        throw new Exception($"Unable to resolve path: {path}");
+                        throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
                     }
                 }
 
@@ -607,6 +603,18 @@ namespace TemplateInterpreter
             }
         }
     }
+
+    public class InitializationException : Exception
+    {
+        public string Descriptor { get; }
+
+        public InitializationException(string message)
+            : base($"Error during initialization: {message}")
+        {
+            Descriptor = message;
+        }
+    }
+
     public class TemplateParsingException : Exception
     {
         public SourceLocation Location { get; }
@@ -1638,7 +1646,7 @@ namespace TemplateInterpreter
         {
             if (_includedTemplate == null)
             {
-                throw new Exception($"Template '{_templateName}' could not been resolved");
+                throw new TemplateEvaluationException($"Template '{_templateName}' could not been resolved", context);
             }
             return _includedTemplate.Evaluate(context);
         }
@@ -1781,13 +1789,13 @@ namespace TemplateInterpreter
                     }
                     else if (paramValue is FunctionInfo paramFuncInfo)
                     {
-                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
+                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs, currentContext))
                         {
                             throw new TemplateEvaluationException(
                                 $"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments",
-                                parentContext);
+                                currentContext);
                         }
-                        registry.ValidateArguments(function, effectiveArgs);
+                        registry.ValidateArguments(function, effectiveArgs, currentContext);
                         return function.Implementation(currentContext, this, effectiveArgs);
                     }
                 }
@@ -1803,18 +1811,19 @@ namespace TemplateInterpreter
                 }
 
                 // If not a parameter in any context or parameter isn't a function, try the registry
-                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
+                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs, currentContext))
                 {
                     throw new TemplateEvaluationException(
                         $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
-                        parentContext);
+                        currentContext);
                 }
-                registry.ValidateArguments(func, effArgs);
+                registry.ValidateArguments(func, effArgs, currentContext);
                 return func.Implementation(currentContext, this, effArgs);
             }
 
-
-            throw new Exception($"Expression is not callable: {callable?.GetType().Name ?? "null"}");
+            throw new TemplateEvaluationException(
+                $"Expression is not callable: {callable?.GetType().Name ?? "<unknown>"}", 
+                currentContext);
         }
 
         private bool IsLazilyEvaluatedFunction(dynamic callable, int argumentCount, ExecutionContext context)
@@ -1920,29 +1929,40 @@ namespace TemplateInterpreter
             {
                 if (functionRegistry.HasFunction(param))
                 {
-                    throw new Exception($"Parameter name '{param}' conflicts with an existing function name");
+                    throw new TemplateParsingException(
+                        $"Parameter name '{param}' conflicts with an existing function name", 
+                        location);
                 }
                 if (!seenParams.Add(param))
                 {
-                    throw new Exception($"Parameter name '{param}' is already defined");
+                    throw new TemplateParsingException(
+                        $"Parameter name '{param}' is already defined",
+                        location);
                 }
             }
 
             // Validate statement variable names don't conflict with parameters, each other, or functions in registry
             var seenVariables = new HashSet<string>();
+
             foreach (var statement in statements)
             {
                 if (parameters.Contains(statement.Key))
                 {
-                    throw new Exception($"Variable name '{statement.Key}' conflicts with parameter name");
+                    throw new TemplateParsingException(
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field", 
+                        location);
                 }
                 if (functionRegistry.HasFunction(statement.Key))
                 {
-                    throw new Exception($"Variable name '{statement.Key}' conflicts with an existing function name");
+                    throw new TemplateParsingException(
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing function", 
+                        location);
                 }
                 if (!seenVariables.Add(statement.Key))
                 {
-                    throw new Exception($"Variable '{statement.Key}' is already defined");
+                    throw new TemplateParsingException(
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field", 
+                        location);
                 }
             }
 
@@ -2095,7 +2115,7 @@ namespace TemplateInterpreter
             var obj = _object.Evaluate(context);
             if (obj == null)
             {
-                throw new Exception($"Cannot access field '{_fieldName}' on null object");
+                throw new TemplateEvaluationException($"Cannot access field '{_fieldName}' on null object", context);
             }
 
             // Handle dictionary-like objects (ExpandoObject, IDictionary)
@@ -2103,7 +2123,7 @@ namespace TemplateInterpreter
             {
                 if (!dict.ContainsKey(_fieldName))
                 {
-                    throw new Exception($"Object does not contain field '{_fieldName}'");
+                    throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
                 }
                 return dict[_fieldName];
             }
@@ -2112,7 +2132,7 @@ namespace TemplateInterpreter
             var property = obj.GetType().GetProperty(_fieldName);
             if (property == null)
             {
-                throw new Exception($"Object does not contain field '{_fieldName}'");
+                throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
             }
 
             var value = property.GetValue(obj);
@@ -2283,7 +2303,7 @@ namespace TemplateInterpreter
                 case TokenType.Not:
                     return !Convert.ToBoolean(value);
                 default:
-                    throw new Exception(string.Format("Unknown unary operator: {0}", _operator));
+                    throw new TemplateEvaluationException(string.Format("Unknown unary operator: {0}", _operator), context);
             }
         }
 
@@ -2328,6 +2348,8 @@ namespace TemplateInterpreter
             var left = _left.Evaluate(context);
             var right = _right.Evaluate(context);
 
+            // type check?
+
             switch (_operator)
             {
                 case TokenType.Plus:
@@ -2351,7 +2373,7 @@ namespace TemplateInterpreter
                 case TokenType.GreaterThanEqual:
                     return Convert.ToDecimal(left) >= Convert.ToDecimal(right);
                 default:
-                    throw new Exception(string.Format("Unknown binary operator: {0}", _operator));
+                    throw new TemplateEvaluationException(string.Format("Unknown binary operator: {0}", _operator), context);
             }
         }
 
@@ -2390,13 +2412,17 @@ namespace TemplateInterpreter
             // Check if iterator name conflicts with existing variable
             if (context.TryResolveValue(_iteratorName, out _))
             {
-                throw new Exception($"Iterator name '{_iteratorName}' conflicts with an existing variable or field");
+                throw new TemplateEvaluationException(
+                    $"Iterator name '{_iteratorName}' conflicts with an existing variable or field", 
+                    context);
             }
 
             var collection = _collection.Evaluate(context);
             if (!(collection is System.Collections.IEnumerable))
             {
-                throw new Exception("Each statement requires an enumerable collection");
+                throw new TemplateEvaluationException(
+                    "Each statement requires an enumerable collection",
+                    context);
             }
 
             var result = new StringBuilder();
@@ -3574,7 +3600,7 @@ namespace TemplateInterpreter
                     var enumerable = args[0] as System.Collections.IEnumerable;
                     if (enumerable == null)
                     {
-                        throw new Exception("length function requires an enumerable argument");
+                        throw new TemplateEvaluationException("length function requires an enumerable argument", context);
                     }
                     return Convert.ToDecimal(enumerable.Cast<object>().Count());
                 });
@@ -3588,7 +3614,7 @@ namespace TemplateInterpreter
                     var str = args[0] as string;
                     if (str == null)
                     {
-                        throw new Exception("length function requires a string argument");
+                        throw new TemplateEvaluationException("length function requires a string argument", context);
                     }
                     return Convert.ToDecimal(str.Length);
                 });
@@ -3602,7 +3628,7 @@ namespace TemplateInterpreter
                     var str = args[0] as string;
                     if (str == null)
                     {
-                        throw new Exception("length function requires a string argument");
+                        throw new TemplateEvaluationException("length function requires a string argument", context);
                     }
                     return string.IsNullOrEmpty(str);
                 });
@@ -3777,7 +3803,7 @@ namespace TemplateInterpreter
 
                     if (step == 0)
                     {
-                        throw new Exception("range function requires a non-zero step value");
+                        throw new TemplateEvaluationException("range function requires a non-zero step value", context);
                     }
 
                     var result = new List<decimal>();
@@ -3815,10 +3841,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeYear function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeYear function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeYear function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeYear function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -3849,10 +3875,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeMonth function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeMonth function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeMonth function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeMonth function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -3895,10 +3921,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeDay function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeDay function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeDay function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeDay function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -3929,10 +3955,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeHour function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeHour function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeHour function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeHour function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -3963,10 +3989,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeMinute function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeMinute function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeMinute function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeMinute function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -3997,10 +4023,10 @@ namespace TemplateInterpreter
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
-                        throw new Exception("rangeSecond function requires valid DateTime parameters");
+                        throw new TemplateEvaluationException("rangeSecond function requires valid DateTime parameters", context);
 
                     if (step <= 0)
-                        throw new Exception("rangeSecond function requires a positive step value");
+                        throw new TemplateEvaluationException("rangeSecond function requires a positive step value", context);
 
                     if (start >= end)
                         return new List<DateTime>();
@@ -4029,7 +4055,7 @@ namespace TemplateInterpreter
 
                     if (collection == null || predicate == null)
                     {
-                        throw new Exception("filter function requires an array and a lambda function");
+                        throw new TemplateEvaluationException("filter function requires an array and a lambda function", context);
                     }
 
                     var result = new List<dynamic>();
@@ -4056,11 +4082,11 @@ namespace TemplateInterpreter
                     var index = Convert.ToInt32(args[1]);
 
                     if (array == null)
-                        throw new Exception("at function requires an array as first argument");
+                        throw new TemplateEvaluationException("at function requires an array as first argument", context);
 
                     var list = array.Cast<object>().ToList();
                     if (index < 0 || index >= list.Count)
-                        throw new Exception($"Index {index} is out of bounds for array of length {list.Count}");
+                        throw new TemplateEvaluationException($"Index {index} is out of bounds for array of length {list.Count}", context);
 
                     return list[index];
                 });
@@ -4073,11 +4099,11 @@ namespace TemplateInterpreter
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
-                        throw new Exception("first function requires an array argument");
+                        throw new TemplateEvaluationException("first function requires an array argument", context);
 
                     var list = array.Cast<object>().ToList();
                     if (list.Count == 0)
-                        throw new Exception("Cannot get first element of empty array");
+                        throw new TemplateEvaluationException("Cannot get first element of empty array", context);
 
                     return list[0];
                 });
@@ -4090,7 +4116,7 @@ namespace TemplateInterpreter
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
-                        throw new Exception("rest function requires an array argument");
+                        throw new TemplateEvaluationException("rest function requires an array argument", context);
 
                     var list = array.Cast<object>().ToList();
                     if (list.Count == 0)
@@ -4107,11 +4133,11 @@ namespace TemplateInterpreter
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
-                        throw new Exception("last function requires an array argument");
+                        throw new TemplateEvaluationException("last function requires an array argument", context);
 
                     var list = array.Cast<object>().ToList();
                     if (list.Count == 0)
-                        throw new Exception("Cannot get last element of empty array");
+                        throw new TemplateEvaluationException("Cannot get last element of empty array", context);
 
                     return list[list.Count - 1];
                 });
@@ -4124,7 +4150,7 @@ namespace TemplateInterpreter
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
-                        throw new Exception("any function requires an array argument");
+                        throw new TemplateEvaluationException("any function requires an array argument", context);
 
                     return array.Cast<object>().Any();
                 });
@@ -4158,9 +4184,9 @@ namespace TemplateInterpreter
                     var delimiter = args[1] as string;
 
                     if (array == null)
-                        throw new Exception("join function requires an array as first argument");
+                        throw new TemplateEvaluationException("join function requires an array as first argument", context);
                     if (delimiter == null)
-                        throw new Exception("join function requires a string as second argument");
+                        throw new TemplateEvaluationException("join function requires a string as second argument", context);
 
                     return string.Join(delimiter, array.Cast<object>().Select(x => TypeHelper.FormatOutput(x ?? "")));
                 });
@@ -4176,9 +4202,9 @@ namespace TemplateInterpreter
                     var delimiter = args[1] as string;
 
                     if (str == null)
-                        throw new Exception("explode function requires a string as first argument");
+                        throw new TemplateEvaluationException("explode function requires a string as first argument", context);
                     if (delimiter == null)
-                        throw new Exception("explode function requires a string as second argument");
+                        throw new TemplateEvaluationException("explode function requires a string as second argument", context);
 
                     return str.Split(new[] { delimiter }, StringSplitOptions.None).ToList();
                 });
@@ -4194,7 +4220,7 @@ namespace TemplateInterpreter
                     var mapper = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
 
                     if (array == null || mapper == null)
-                        throw new Exception("map function requires an array and a function");
+                        throw new TemplateEvaluationException("map function requires an array and a function", context);
 
                     return array.Cast<object>()
                         .Select(item => mapper(context, callSite, new List<dynamic> { item }))
@@ -4214,7 +4240,7 @@ namespace TemplateInterpreter
                     var initialValue = args[2];
 
                     if (array == null || reducer == null)
-                        throw new Exception("reduce function requires an array and a function");
+                        throw new TemplateEvaluationException("reduce function requires an array and a function", context);
 
                     return array.Cast<object>()
                         .Aggregate((object)initialValue, (acc, curr) =>
@@ -4232,7 +4258,7 @@ namespace TemplateInterpreter
                     var second = args[1] as System.Collections.IEnumerable;
 
                     if (first == null || second == null)
-                        throw new Exception("concat function requires both arguments to be arrays");
+                        throw new TemplateEvaluationException("concat function requires both arguments to be arrays", context);
 
                     // Combine both enumerables into a single list
                     var result = first.Cast<object>().Concat(second.Cast<object>()).ToList();
@@ -4251,7 +4277,7 @@ namespace TemplateInterpreter
                     int count = Convert.ToInt32(args[1]);
 
                     if (array == null)
-                        throw new Exception("take function requires an array as first argument");
+                        throw new TemplateEvaluationException("take function requires an array as first argument", context);
 
                     if (count <= 0)
                         return new List<object>();
@@ -4270,7 +4296,7 @@ namespace TemplateInterpreter
                     int count = Convert.ToInt32(args[1]);
 
                     if (array == null)
-                        throw new Exception("skip function requires an array as first argument");
+                        throw new TemplateEvaluationException("skip function requires an array as first argument", context);
 
                     return array.Cast<object>().Skip(count).ToList();
                 });
@@ -4283,7 +4309,7 @@ namespace TemplateInterpreter
                 {
                     var array = args[0] as System.Collections.IEnumerable;
                     if (array == null)
-                        throw new Exception("order function requires an array argument");
+                        throw new TemplateEvaluationException("order function requires an array argument", context);
 
                     return array.Cast<object>().OrderBy(x => x).ToList();
                 });
@@ -4299,7 +4325,7 @@ namespace TemplateInterpreter
                     var ascending = Convert.ToBoolean(args[1]);
 
                     if (array == null)
-                        throw new Exception("order function requires an array as first argument");
+                        throw new TemplateEvaluationException("order function requires an array as first argument", context);
 
                     var ordered = array.Cast<object>();
                     return (ascending ? ordered.OrderBy(x => x) : ordered.OrderByDescending(x => x)).ToList();
@@ -4316,7 +4342,7 @@ namespace TemplateInterpreter
                     var comparer = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
 
                     if (array == null || comparer == null)
-                        throw new Exception("order function requires an array and a comparison function");
+                        throw new TemplateEvaluationException("order function requires an array and a comparison function", context);
 
                     return array.Cast<object>()
                         .OrderBy(x => x, new DynamicComparer(context, callSite, comparer))
@@ -4334,9 +4360,9 @@ namespace TemplateInterpreter
                     var fieldName = args[1] as string;
 
                     if (array == null)
-                        throw new Exception("group function requires an array as first argument");
+                        throw new TemplateEvaluationException("group function requires an array as first argument", context);
                     if (string.IsNullOrEmpty(fieldName))
-                        throw new Exception("group function requires a non-empty string as second argument");
+                        throw new TemplateEvaluationException("group function requires a non-empty string as second argument", context);
 
                     var result = new ExpandoObject() as IDictionary<string, object>;
 
@@ -4350,19 +4376,19 @@ namespace TemplateInterpreter
                         if (item is IDictionary<string, object> dict)
                         {
                             if (!dict.ContainsKey(fieldName))
-                                throw new Exception($"Object does not contain field '{fieldName}'");
+                                throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
                             key = dict[fieldName]?.ToString();
                         }
                         else
                         {
                             var property = item.GetType().GetProperty(fieldName);
                             if (property == null)
-                                throw new Exception($"Object does not contain field '{fieldName}'");
+                                throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
                             key = property.GetValue(item)?.ToString();
                         }
 
                         if (key == null)
-                            throw new Exception($"Field '{fieldName}' value cannot be null");
+                            throw new TemplateEvaluationException($"Field '{fieldName}' must be present", context);
 
                         // Add item to the appropriate group
                         if (!result.ContainsKey(key))
@@ -4386,15 +4412,15 @@ namespace TemplateInterpreter
                     var fieldName = args[1] as string;
 
                     if (obj == null)
-                        throw new Exception("get function requires an object as first argument");
+                        throw new TemplateEvaluationException("get function requires an object as first argument", context);
                     if (string.IsNullOrEmpty(fieldName))
-                        throw new Exception("get function requires a non-empty string as second argument");
+                        throw new TemplateEvaluationException("get function requires a non-empty string as second argument", context);
 
                     // Handle ExpandoObject and other dictionary types
                     if (obj is IDictionary<string, object> dict)
                     {
                         if (!dict.ContainsKey(fieldName))
-                            throw new Exception($"Object does not contain field '{fieldName}'");
+                            throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
 
                         var value = dict[fieldName];
                         if (TypeHelper.IsConvertibleToDecimal(value))
@@ -4407,7 +4433,7 @@ namespace TemplateInterpreter
                     // Handle regular objects using reflection
                     var property = obj.GetType().GetProperty(fieldName);
                     if (property == null)
-                        throw new Exception($"Object does not contain field '{fieldName}'");
+                        throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
 
                     var propValue = property.GetValue(obj);
                     if (TypeHelper.IsConvertibleToDecimal(propValue))
@@ -4425,7 +4451,7 @@ namespace TemplateInterpreter
                 {
                     var obj = args[0];
                     if (obj == null)
-                        throw new Exception("keys function requires an object argument");
+                        throw new TemplateEvaluationException("keys function requires an object argument", context);
 
                     // Handle ExpandoObject and other dictionary types
                     if (obj is IDictionary<string, object> dict)
@@ -4454,7 +4480,7 @@ namespace TemplateInterpreter
                     var number2 = Convert.ToInt32(args[1]);
 
                     if (number2 == 0)
-                        throw new Exception("Cannot perform modulo with zero as divisor");
+                        throw new TemplateEvaluationException("Cannot perform modulo with zero as divisor", context);
 
                     return new decimal(number1 % number2);
                 });
@@ -4500,7 +4526,7 @@ namespace TemplateInterpreter
                     var decimals = Convert.ToInt32(args[1]);
 
                     if (decimals < 0)
-                        throw new Exception("Number of decimal places cannot be negative");
+                        throw new TemplateEvaluationException("Number of decimal places cannot be negative", context);
 
                     return Math.Round(number, decimals);
                 });
@@ -4534,10 +4560,10 @@ namespace TemplateInterpreter
                     var str = args[0] as string;
 
                     if (string.IsNullOrEmpty(str))
-                        throw new Exception("Cannot convert empty or null string to number");
+                        throw new TemplateEvaluationException("Cannot convert empty or null string to number", context);
 
                     if (!decimal.TryParse(str, out decimal result))
-                        throw new Exception($"Cannot convert string '{str}' to number");
+                        throw new TemplateEvaluationException($"Cannot convert string '{str}' to number", context);
 
                     return result;
                 });
@@ -4564,7 +4590,7 @@ namespace TemplateInterpreter
                 {
                     var dateStr = args[0] as string;
                     if (string.IsNullOrEmpty(dateStr))
-                        throw new Exception("datetime function requires a non-empty string argument");
+                        throw new TemplateEvaluationException("datetime function requires a non-empty string argument", context);
 
                     try
                     {
@@ -4572,7 +4598,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to parse date string '{dateStr}': {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to parse date string '{dateStr}': {ex.Message}", context);
                     }
                 });
 
@@ -4587,9 +4613,9 @@ namespace TemplateInterpreter
                     var format = args[1] as string;
 
                     if (!date.HasValue)
-                        throw new Exception("format function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("format function requires a valid DateTime as first argument", context);
                     if (string.IsNullOrEmpty(format))
-                        throw new Exception("format function requires a non-empty format string as second argument");
+                        throw new TemplateEvaluationException("format function requires a non-empty format string as second argument", context);
 
                     try
                     {
@@ -4597,7 +4623,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to format date with format string '{format}': {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to format date with format string '{format}': {ex.Message}", context);
                     }
                 });
 
@@ -4612,7 +4638,7 @@ namespace TemplateInterpreter
                     var years = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addYears function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addYears function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4620,7 +4646,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {years} years to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {years} years to date: {ex.Message}", context);
                     }
                 });
 
@@ -4635,7 +4661,7 @@ namespace TemplateInterpreter
                     var months = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addMonths function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addMonths function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4643,7 +4669,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {months} months to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {months} months to date: {ex.Message}", context);
                     }
                 });
 
@@ -4658,7 +4684,7 @@ namespace TemplateInterpreter
                     var days = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addDays function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addDays function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4666,7 +4692,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {days} days to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {days} days to date: {ex.Message}", context);
                     }
                 });
 
@@ -4681,7 +4707,7 @@ namespace TemplateInterpreter
                     var hours = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addHours function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addHours function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4689,7 +4715,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {hours} hours to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {hours} hours to date: {ex.Message}", context);
                     }
                 });
 
@@ -4704,7 +4730,7 @@ namespace TemplateInterpreter
                     var minutes = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addMinutes function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addMinutes function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4712,7 +4738,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {minutes} minutes to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {minutes} minutes to date: {ex.Message}", context);
                     }
                 });
 
@@ -4727,7 +4753,7 @@ namespace TemplateInterpreter
                     var seconds = Convert.ToInt32(args[1]);
 
                     if (!date.HasValue)
-                        throw new Exception("addSeconds function requires a valid DateTime as first argument");
+                        throw new TemplateEvaluationException("addSeconds function requires a valid DateTime as first argument", context);
 
                     try
                     {
@@ -4735,7 +4761,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to add {seconds} seconds to date: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to add {seconds} seconds to date: {ex.Message}", context);
                     }
                 });
 
@@ -4761,7 +4787,7 @@ namespace TemplateInterpreter
                 {
                     var uriString = args[0] as string;
                     if (string.IsNullOrEmpty(uriString))
-                        throw new Exception("uri function requires a non-empty string argument");
+                        throw new TemplateEvaluationException("uri function requires a non-empty string argument", context);
 
                     try
                     {
@@ -4769,7 +4795,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to parse uri string '{uriString}': {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to parse uri string '{uriString}': {ex.Message}", context);
                     }
                 });
 
@@ -4787,7 +4813,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to encode html: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to encode html: {ex.Message}", context);
                     }
                 });
 
@@ -4805,7 +4831,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to decode html: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to decode html: {ex.Message}", context);
                     }
                 });
 
@@ -4823,7 +4849,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to encode url: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to encode url: {ex.Message}", context);
                     }
                 });
 
@@ -4841,7 +4867,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to decode url: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to decode url: {ex.Message}", context);
                     }
                 });
 
@@ -4853,7 +4879,7 @@ namespace TemplateInterpreter
                 {
                     var jsonString = args[0] as string;
                     if (string.IsNullOrEmpty(jsonString))
-                        throw new Exception("fromJson function requires a non-empty string argument");
+                        throw new TemplateEvaluationException("fromJson function requires a non-empty string argument", context);
 
                     try
                     {
@@ -4861,7 +4887,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to parse JSON string: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to parse JSON string: {ex.Message}", context);
                     }
                 });
 
@@ -4893,7 +4919,7 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new Exception($"Failed to serialize object to JSON: {ex.Message}");
+                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: {ex.Message}", context);
                     }
                 });
         }
@@ -5078,7 +5104,7 @@ namespace TemplateInterpreter
 
             if (existingOverload != null)
             {
-                throw new Exception($"Function '{name}' is already registered with the same parameter types");
+                throw new InitializationException($"Function '{name}' is already registered with the same parameter types");
             }
 
             _functions[name].Add(definition);
@@ -5111,7 +5137,8 @@ namespace TemplateInterpreter
             string name,
             List<dynamic> arguments,
             out FunctionDefinition matchingFunction,
-            out List<dynamic> effectiveArguments)
+            out List<dynamic> effectiveArguments,
+            ExecutionContext context)
         {
             matchingFunction = null;
             effectiveArguments = null;
@@ -5137,7 +5164,7 @@ namespace TemplateInterpreter
             {
                 Function = overload,
                 Score = ScoreTypeMatch(overload.Parameters, arguments),
-                EffectiveArgs = CreateEffectiveArguments(overload.Parameters, arguments)
+                EffectiveArgs = CreateEffectiveArguments(overload.Parameters, arguments, context)
             })
             .Where(x => x.Score >= 0) // Filter out incompatible matches
             .OrderByDescending(x => x.Score)
@@ -5151,7 +5178,7 @@ namespace TemplateInterpreter
             // If we have multiple matches with the same best score, it's ambiguous
             if (scoredOverloads.Count > 1 && scoredOverloads[0].Score == scoredOverloads[1].Score)
             {
-                throw new Exception($"Ambiguous function call to '{name}'. Multiple overloads match the provided arguments.");
+                throw new TemplateEvaluationException($"Ambiguous function call to '{name}'. Multiple overloads match the provided arguments.", context);
             }
 
             var bestMatch = scoredOverloads.First();
@@ -5160,7 +5187,10 @@ namespace TemplateInterpreter
             return true;
         }
 
-        private List<dynamic> CreateEffectiveArguments(List<ParameterDefinition> parameters, List<dynamic> providedArgs)
+        private List<dynamic> CreateEffectiveArguments(
+            List<ParameterDefinition> parameters, 
+            List<dynamic> providedArgs, 
+            ExecutionContext context)
         {
             var effectiveArgs = new List<dynamic>();
 
@@ -5177,7 +5207,7 @@ namespace TemplateInterpreter
                 else
                 {
                     // This shouldn't happen due to earlier checks, but just in case
-                    throw new Exception("Missing required argument");
+                    throw new TemplateEvaluationException("Function missing required argument", context);
                 }
             }
 
@@ -5243,11 +5273,13 @@ namespace TemplateInterpreter
             return totalScore;
         }
 
-        public void ValidateArguments(FunctionDefinition function, List<dynamic> arguments)
+        public void ValidateArguments(FunctionDefinition function, List<dynamic> arguments, ExecutionContext context)
         {
             if (arguments.Count != function.Parameters.Count)
             {
-                throw new Exception($"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}");
+                throw new TemplateEvaluationException(
+                    $"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}", 
+                    context);
             }
 
             for (int i = 0; i < arguments.Count; i++)
@@ -5266,7 +5298,7 @@ namespace TemplateInterpreter
                 {
                     if (!parameter.Type.IsClass)
                     {
-                        throw new Exception($"Argument {i + 1} of function '{function.Name}' cannot be null");
+                        throw new TemplateEvaluationException($"Argument {i + 1} of function '{function.Name}' cannot be null", context);
                     }
                     continue;
                 }
@@ -5278,7 +5310,9 @@ namespace TemplateInterpreter
                 {
                     if (!(argument is System.Collections.IEnumerable))
                     {
-                        throw new Exception($"Argument {i + 1} of function '{function.Name}' must be an array or collection");
+                        throw new TemplateEvaluationException(
+                            $"Argument {i + 1} of function '{function.Name}' must be an array or collection",
+                            context);
                     }
                     continue;
                 }
@@ -5286,7 +5320,9 @@ namespace TemplateInterpreter
                 // Check if the argument can be converted to the expected type
                 if (!parameter.Type.IsAssignableFrom(argumentType))
                 {
-                    throw new Exception($"Argument {i + 1} of function '{function.Name}' must be of type {parameter.Type.Name}");
+                    throw new TemplateEvaluationException(
+                        $"Argument {i + 1} of function '{function.Name}' must be of type {parameter.Type.Name}",
+                        context);
                 }
             }
         }
@@ -5482,7 +5518,7 @@ namespace TemplateInterpreter
         {
             if (!_templates.TryGetValue(templateName, out var template))
             {
-                throw new Exception($"Template '{templateName}' not found");
+                throw new InitializationException($"Template '{templateName}' not found");
             }
             return template;
         }

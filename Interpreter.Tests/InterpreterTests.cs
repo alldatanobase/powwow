@@ -842,7 +842,7 @@ user:password", result);
             var template = "{{let x = 2}}{{let x = 3}}";
             dynamic data = new ExpandoObject();
 
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Should throw exception when trying to redefine variable");
         }
 
@@ -855,7 +855,7 @@ user:password", result);
             var dict = (IDictionary<string, object>)data;
             dict["existingField"] = 1;
 
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Should throw exception when variable name conflicts with data context");
         }
 
@@ -869,7 +869,7 @@ user:password", result);
 
             dynamic data = new ExpandoObject();
 
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Should throw exception when variable name conflicts with iterator");
         }
 
@@ -935,7 +935,7 @@ user:password", result);
 
             dynamic data = new ExpandoObject();
 
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template1, data),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template1, data),
                 "Should throw exception when iterator name conflicts with existing variable");
 
             // Test case 2: Variable conflicts with existing iterator
@@ -945,7 +945,7 @@ user:password", result);
                 {{item}}
             {{/for}}";
 
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template2, data),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template2, data),
                 "Should throw exception when variable name conflicts with existing iterator");
 
             // Test case 3: Verify proper nested loops with different iterator names work
@@ -1514,7 +1514,7 @@ Line 3
             dynamic data = new ExpandoObject();
 
             // Act Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data));
         }
 
         [Test]
@@ -1795,7 +1795,7 @@ Line 3
             var template = @"{{ fromJson(""{invalid json}"") }}";
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new { }));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new { }));
         }
 
         [Test]
@@ -1805,7 +1805,7 @@ Line 3
             var template = "{{ fromJson(null) }}";
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new { }));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new { }));
         }
 
         [Test]
@@ -2220,7 +2220,7 @@ Line 3
             var template = "{{ fetch(\"" + fetchXml + "\") }}";
 
             // Act & Assert
-            var ex = Assert.Throws<Exception>(() => interpreter.Interpret(template, new ExpandoObject()));
+            var ex = Assert.Throws<TemplateEvaluationException>(() => interpreter.Interpret(template, new ExpandoObject()));
             Assert.That(ex.Message, Does.Contain("Dataverse service not configured"));
         }
 
@@ -2231,7 +2231,7 @@ Line 3
             var template = "{{ fetch(\"\") }}";
 
             // Act & Assert
-            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()));
+            var ex = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new ExpandoObject()));
             Assert.That(ex.Message, Does.Contain("requires a non-empty FetchXML string"));
         }
 
@@ -2758,7 +2758,7 @@ End";
         public void ParameterNameConflict_ThrowsException()
         {
             var template = "{{ (a) => a = 1, a }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Variable name 'a' conflicts with parameter name");
         }
 
@@ -2766,7 +2766,7 @@ End";
         public void ExternalVariableConflict_ThrowsException()
         {
             var template = "{{ let x = 2 }}{{ (() => x = 3, x)() }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
 
@@ -2774,7 +2774,7 @@ End";
         public void IteratorConflict_ThrowsException()
         {
             var template = "{{ for x in [1,2,3] }}{{ (() => x = 3, x)() }}{{ /for }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
 
@@ -2785,7 +2785,7 @@ End";
             data["x"] = "hello world";
 
             var template = "{{ ((a) => x = [\"foo\"], concat(a, x))([1]) }}";
-            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            var exception = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
 
@@ -2796,7 +2796,7 @@ End";
             data["x"] = "hello world";
 
             var template = "{{ let x = 3 }}";
-            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            var exception = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
 
@@ -2807,7 +2807,7 @@ End";
             data["x"] = "hello world";
 
             var template = "{{ for i in [1, 2] }}{{ let x = 3 }}{{ /for }}";
-            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data),
+            var exception = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
 
@@ -2821,7 +2821,7 @@ End";
 {{ myFunc(1, 2) }}";
 
             // Act & Assert
-            var exception = Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
+            var exception = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, _emptyData));
             
             // Verify the exception message contains information about missing parameters
             Assert.That(exception.Message, Does.Contain("Missing values for:"));
@@ -2835,7 +2835,7 @@ End";
         public void FunctionNameConflict_ThrowsException()
         {
             var template = "{{ (a) => length = 3, a * length }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'length' as it conflicts with an existing function");
         }
 
@@ -2843,7 +2843,7 @@ End";
         public void VariableReassignment_ThrowsException()
         {
             var template = "{{ () => x = 1, x = 2, x }}";
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, new ExpandoObject()),
+            Assert.Throws<TemplateParsingException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot reassign variable 'x' in lambda function");
         }
 
@@ -3302,7 +3302,7 @@ Joined nested monad: {{ flattened }}
             dynamic data = new ExpandoObject();
 
             // Act & Assert
-            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, data));
+            var ex = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data));
             Assert.That(ex.Message, Contains.Substring("non-zero step value"));
         }
 
@@ -3620,7 +3620,7 @@ Joined nested monad: {{ flattened }}
             }}";
 
             // Act & Assert
-            Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, _emptyData));
         }
 
         [Test]
@@ -3811,8 +3811,8 @@ Hello, {{ name }}!
         {
             var template = @"{{ let fn = () => fn() }}{{ fn() }}";
 
-            var ex = Assert.Throws<Exception>(() => _interpreter.Interpret(template, _emptyData));
-            Assert.That(ex.Message, Is.EqualTo("Maximum call stack depth 1000 has been exceeded."));
+            var ex = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, _emptyData));
+            Assert.That(ex.Message, Contains.Substring("Maximum call stack depth 1000 has been exceeded."));
         }
 
         [Test]
