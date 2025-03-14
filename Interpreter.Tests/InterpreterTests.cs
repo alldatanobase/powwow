@@ -4347,5 +4347,57 @@ string";
 
             StringAssert.Contains("No matching overload found for function 'nonexistent' with the provided arguments", exception.Message);
         }
+
+        [Test]
+        public void SpaceCanPrecedeComment()
+        {
+            // Arrange
+            string template = @"{{ * hello world *}}{{ 1 }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void SpaceCanPrecedeCommentWithWhitespaceControl()
+        {
+            // Arrange
+            string template = @"{{- * hello world *}}{{ 1 }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void SpaceCanFollowComment()
+        {
+            // Arrange
+            string template = @"{{* hello world * }}{{ 1 }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void SpaceCanFollowCommentWithWhitespaceControl()
+        {
+            // Arrange
+            string template = @"{{* hello world * -}}{{ 1 }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1"));
+        }
     }
 }

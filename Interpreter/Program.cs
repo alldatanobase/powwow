@@ -180,7 +180,7 @@ namespace TemplateInterpreter
             if (_variables.ContainsKey(name) || _iteratorValues.ContainsKey(name) || TryResolveValue(name, out _))
             {
                 throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
                     this);
             }
 
@@ -400,7 +400,7 @@ namespace TemplateInterpreter
             if (_variables.ContainsKey(name))
             {
                 throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
                     this);
             }
 
@@ -408,14 +408,14 @@ namespace TemplateInterpreter
             if (_parameters.ContainsKey(name))
             {
                 throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with a parameter name", 
+                    $"Cannot define variable '{name}' because it conflicts with a parameter name",
                     this);
             }
 
             if (_parentContext.TryResolveNonShadowableValue(name, out _))
             {
                 throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field", 
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
                     this);
             }
 
@@ -857,22 +857,32 @@ namespace TemplateInterpreter
         {
             while (_position < _input.Length)
             {
-                if (TryMatch("*}}"))
+                if (TryMatch("*"))
                 {
-                    AddToken(TokenType.CommentEnd, "*");
+                    var savedPosition = SavePosition();
                     UpdatePositionAndTracking(1); // Skip past "*"
-                    AddToken(TokenType.DirectiveEnd, "}}");
-                    UpdatePositionAndTracking(2); // Skip past "}}"
-                    return;
+
+                    while (_position < _input.Length && char.IsWhiteSpace(_input[_position]))
+                    {
+                        UpdatePositionAndTracking(1);
+                    }
+
+                    if (TryMatch("}}"))
+                    {
+                        AddToken(TokenType.CommentEnd, "*", savedPosition);
+                        AddToken(TokenType.DirectiveEnd, "}}");
+                        UpdatePositionAndTracking(2); // Skip past "}}"
+                        return;
+                    }
+                    else if (TryMatch("-}}"))
+                    {
+                        AddToken(TokenType.CommentEnd, "*", savedPosition);
+                        AddToken(TokenType.DirectiveEnd, "-}}");
+                        UpdatePositionAndTracking(3); // Skip past "-}}"
+                        return;
+                    }
                 }
-                else if (TryMatch("*-}}"))
-                {
-                    AddToken(TokenType.CommentEnd, "*");
-                    UpdatePositionAndTracking(1); // Skip past "*"
-                    AddToken(TokenType.DirectiveEnd, "-}}");
-                    UpdatePositionAndTracking(3); // Skip past "-}}"
-                    return;
-                }
+
                 UpdatePositionAndTracking(1);
             }
 
@@ -881,6 +891,8 @@ namespace TemplateInterpreter
 
         private void TokenizeDirective()
         {
+            SkipWhitespace();
+
             if (TryMatch("*"))
             {
                 AddToken(TokenType.CommentStart, "*");
@@ -888,8 +900,6 @@ namespace TemplateInterpreter
                 TokenizeComment();
                 return;
             }
-
-            SkipWhitespace();
 
             if (TryMatch("literal"))
             {
@@ -1822,7 +1832,7 @@ namespace TemplateInterpreter
             }
 
             throw new TemplateEvaluationException(
-                $"Expression is not callable: {callable?.GetType().Name ?? "<unknown>"}", 
+                $"Expression is not callable: {callable?.GetType().Name ?? "<unknown>"}",
                 currentContext);
         }
 
@@ -1930,7 +1940,7 @@ namespace TemplateInterpreter
                 if (functionRegistry.HasFunction(param))
                 {
                     throw new TemplateParsingException(
-                        $"Parameter name '{param}' conflicts with an existing function name", 
+                        $"Parameter name '{param}' conflicts with an existing function name",
                         location);
                 }
                 if (!seenParams.Add(param))
@@ -1949,19 +1959,19 @@ namespace TemplateInterpreter
                 if (parameters.Contains(statement.Key))
                 {
                     throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field", 
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
                         location);
                 }
                 if (functionRegistry.HasFunction(statement.Key))
                 {
                     throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing function", 
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing function",
                         location);
                 }
                 if (!seenVariables.Add(statement.Key))
                 {
                     throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field", 
+                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
                         location);
                 }
             }
@@ -2413,7 +2423,7 @@ namespace TemplateInterpreter
             if (context.TryResolveValue(_iteratorName, out _))
             {
                 throw new TemplateEvaluationException(
-                    $"Iterator name '{_iteratorName}' conflicts with an existing variable or field", 
+                    $"Iterator name '{_iteratorName}' conflicts with an existing variable or field",
                     context);
             }
 
@@ -5188,8 +5198,8 @@ namespace TemplateInterpreter
         }
 
         private List<dynamic> CreateEffectiveArguments(
-            List<ParameterDefinition> parameters, 
-            List<dynamic> providedArgs, 
+            List<ParameterDefinition> parameters,
+            List<dynamic> providedArgs,
             ExecutionContext context)
         {
             var effectiveArgs = new List<dynamic>();
@@ -5278,7 +5288,7 @@ namespace TemplateInterpreter
             if (arguments.Count != function.Parameters.Count)
             {
                 throw new TemplateEvaluationException(
-                    $"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}", 
+                    $"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}",
                     context);
             }
 
