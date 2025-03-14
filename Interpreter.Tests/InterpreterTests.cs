@@ -4399,5 +4399,24 @@ string";
             // Assert
             Assert.That(result, Is.EqualTo("1"));
         }
+
+        [Test]
+        public void IncludeCirclularRefTest()
+        {
+            // Arrange
+            var registry = new TemplateRegistry();
+            registry.RegisterTemplate("header", "<h1>{{title}}{{include footer}}</h1>");
+            registry.RegisterTemplate("footer", "<footer>{{copyright}}{{include header}}</footer>");
+
+            var interpreter = new Interpreter(registry);
+
+            var template = "{{include header}}";
+
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Circular template reference detected: 'header'", exception.Message);
+        }
     }
 }

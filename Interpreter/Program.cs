@@ -87,27 +87,43 @@ namespace TemplateInterpreter
             return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null, _maxRecursionDepth, ast));
         }
 
-        private AstNode ProcessIncludes(AstNode node)
+        private AstNode ProcessIncludes(AstNode node, HashSet<string> descendantIncludes = null)
         {
+            descendantIncludes = descendantIncludes ?? new HashSet<string>();
+            
             // Handle IncludeNode
             if (node is IncludeNode includeNode)
             {
-                var templateContent = _templateResolver.ResolveTemplate(includeNode.TemplateName);
-                var tokens = _lexer.Tokenize(templateContent);
-                var includedAst = _parser.Parse(tokens);
+                if (!descendantIncludes.Add(includeNode.TemplateName))
+                {
+                    throw new TemplateParsingException(
+                        $"Circular template reference detected: '{includeNode.TemplateName}'",
+                        node.Location);
+                }
 
-                // Process includes in the included template
-                includedAst = ProcessIncludes(includedAst);
+                try
+                {
+                    var templateContent = _templateResolver.ResolveTemplate(includeNode.TemplateName);
+                    var tokens = _lexer.Tokenize(templateContent);
+                    var includedAst = _parser.Parse(tokens);
 
-                // Set the processed template
-                includeNode.SetIncludedTemplate(includedAst);
-                return includeNode;
+                    // Process includes in the included template
+                    includedAst = ProcessIncludes(includedAst, descendantIncludes);
+
+                    // Set the processed template
+                    includeNode.SetIncludedTemplate(includedAst);
+                    return includeNode;
+                }
+                finally
+                {
+                    descendantIncludes.Remove(includeNode.TemplateName);
+                }
             }
 
             // Handle TemplateNode
             if (node is TemplateNode templateNode)
             {
-                var processedChildren = templateNode.Children.Select(ProcessIncludes).ToList();
+                var processedChildren = templateNode.Children.Select(child => ProcessIncludes(child, descendantIncludes)).ToList();
                 return new TemplateNode(processedChildren, node.Location);
             }
 
@@ -115,15 +131,15 @@ namespace TemplateInterpreter
             if (node is IfNode ifNode)
             {
                 var processedBranches = ifNode.ConditionalBranches.Select(branch =>
-                    new IfNode.IfBranch(branch.Condition, ProcessIncludes(branch.Body))).ToList();
-                var processedElse = ifNode.ElseBranch != null ? ProcessIncludes(ifNode.ElseBranch) : null;
+                    new IfNode.IfBranch(branch.Condition, ProcessIncludes(branch.Body, descendantIncludes))).ToList();
+                var processedElse = ifNode.ElseBranch != null ? ProcessIncludes(ifNode.ElseBranch, descendantIncludes) : null;
                 return new IfNode(processedBranches, processedElse, node.Location);
             }
 
             // Handle ForNode
             if (node is ForNode forNode)
             {
-                var processedBody = ProcessIncludes(forNode.Body);
+                var processedBody = ProcessIncludes(forNode.Body, descendantIncludes);
                 return new ForNode(forNode.IteratorName, forNode.Collection, processedBody, node.Location);
             }
 
