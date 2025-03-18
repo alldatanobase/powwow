@@ -4794,7 +4794,30 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new Uri(uriString);
+                        var uri = new Uri(uriString);
+                        var dict = new Dictionary<string, object>();
+                        dict["AbsolutePath"] = uri.AbsolutePath;
+                        dict["AbsoluteUri"] = uri.AbsoluteUri;
+                        dict["DnsSafeHost"] = uri.DnsSafeHost;
+                        dict["Fragment"] = uri.Fragment;
+                        dict["Host"] = uri.Host;
+                        dict["HostNameType"] = uri.HostNameType;
+                        dict["IdnHost"] = uri.IdnHost;
+                        dict["IsAbsoluteUri"] = uri.IsAbsoluteUri;
+                        dict["IsDefaultPort"] = uri.IsDefaultPort;
+                        dict["IsFile"] = uri.IsFile;
+                        dict["IsLoopback"] = uri.IsLoopback;
+                        dict["IsUnc"] = uri.IsUnc;
+                        dict["LocalPath"] = uri.LocalPath;
+                        dict["OriginalString"] = uri.OriginalString;
+                        dict["PathAndQuery"] = uri.PathAndQuery;
+                        dict["Port"] = uri.Port;
+                        dict["Query"] = uri.Query;
+                        dict["Scheme"] = uri.Scheme;
+                        dict["Segments"] = uri.Segments;
+                        dict["UserEscaped"] = uri.UserEscaped;
+                        dict["UserInfo"] = uri.UserInfo;
+                        return dict;
                     }
                     catch (Exception ex)
                     {
