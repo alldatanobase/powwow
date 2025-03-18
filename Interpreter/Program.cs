@@ -73,7 +73,7 @@ namespace TemplateInterpreter
                 });
         }
 
-        public string Interpret(string template, dynamic data)
+        public string Interpret(string template, IDictionary<string, dynamic> data)
         {
             var tokens = _lexer.Tokenize(template);
             var ast = _parser.Parse(tokens);
@@ -241,11 +241,6 @@ namespace TemplateInterpreter
             if (_data == null || string.IsNullOrEmpty(propertyName))
             {
                 return false;
-            }
-
-            if (_data is ExpandoObject)
-            {
-                return ((IDictionary<string, object>)_data).TryGetValue(propertyName, out value);
             }
 
             if (_data is IDictionary<string, object> dict)
@@ -2108,15 +2103,14 @@ namespace TemplateInterpreter
 
         public override dynamic Evaluate(ExecutionContext context)
         {
-            var obj = new ExpandoObject();
-            var dict = obj as IDictionary<string, object>;
+            var dict = new Dictionary<string, object>();
 
             foreach (var field in _fields)
             {
                 dict[field.Key] = field.Value.Evaluate(context);
             }
 
-            return obj;
+            return dict;
         }
 
         public override string ToStackString()
@@ -2150,7 +2144,6 @@ namespace TemplateInterpreter
                 throw new TemplateEvaluationException($"Cannot access field '{_fieldName}' on null object", context);
             }
 
-            // Handle dictionary-like objects (ExpandoObject, IDictionary)
             if (obj is IDictionary<string, object> dict)
             {
                 if (!dict.ContainsKey(_fieldName))
@@ -3702,12 +3695,6 @@ namespace TemplateInterpreter
                     var obj = args[0];
                     var propertyName = args[1]?.ToString() ?? "";
 
-                    // Handle ExpandoObject separately
-                    if (obj is ExpandoObject)
-                    {
-                        return ((IDictionary<string, object>)obj).ContainsKey(propertyName);
-                    }
-
                     // Handle dictionary types
                     if (obj is IDictionary<string, object> dict)
                     {
@@ -4396,7 +4383,7 @@ namespace TemplateInterpreter
                     if (string.IsNullOrEmpty(fieldName))
                         throw new TemplateEvaluationException("group function requires a non-empty string as second argument", context);
 
-                    var result = new ExpandoObject() as IDictionary<string, object>;
+                    var result = new Dictionary<string, object>();
 
                     foreach (var item in array)
                     {
@@ -4448,7 +4435,6 @@ namespace TemplateInterpreter
                     if (string.IsNullOrEmpty(fieldName))
                         throw new TemplateEvaluationException("get function requires a non-empty string as second argument", context);
 
-                    // Handle ExpandoObject and other dictionary types
                     if (obj is IDictionary<string, object> dict)
                     {
                         if (!dict.ContainsKey(fieldName))
@@ -4485,7 +4471,6 @@ namespace TemplateInterpreter
                     if (obj == null)
                         throw new TemplateEvaluationException("keys function requires an object argument", context);
 
-                    // Handle ExpandoObject and other dictionary types
                     if (obj is IDictionary<string, object> dict)
                     {
                         return dict.Keys.ToList();
@@ -4915,7 +4900,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return ParseJsonToExpando(jsonString);
+                        return ParseToObject(jsonString);
                     }
                     catch (Exception ex)
                     {
@@ -4956,37 +4941,37 @@ namespace TemplateInterpreter
                 });
         }
 
-        private dynamic ParseJsonToExpando(string jsonString)
+        private dynamic ParseToObject(string jsonString)
         {
             var serializer = new JavaScriptSerializer();
             var deserializedObject = serializer.Deserialize<object>(jsonString);
-            return ConvertToExpando(deserializedObject);
+            return ConvertToDictionary(deserializedObject);
         }
 
-        private dynamic ConvertToExpando(object obj)
+        private dynamic ConvertToDictionary(object obj)
         {
             if (obj == null) return null;
 
             // Handle dictionary (objects in JSON)
             if (obj is Dictionary<string, object> dict)
             {
-                var expando = new ExpandoObject() as IDictionary<string, object>;
+                var newDict = new Dictionary<string, object>();
                 foreach (var kvp in dict)
                 {
-                    var convertedValue = ConvertToExpando(kvp.Value);
+                    var convertedValue = ConvertToDictionary(kvp.Value);
                     if (convertedValue != null)  // Skip null values
                     {
-                        expando[kvp.Key] = convertedValue;
+                        newDict[kvp.Key] = convertedValue;
                     }
                 }
-                return expando;
+                return newDict;
             }
 
             // Handle array
             if (obj is System.Collections.ArrayList arrayList)
             {
                 return arrayList.Cast<object>()
-                               .Select(item => ConvertToExpando(item))
+                               .Select(item => ConvertToDictionary(item))
                                .Where(item => item != null)  // Filter out null values
                                .ToList();
             }
@@ -4994,7 +4979,7 @@ namespace TemplateInterpreter
             if (obj is Object[] array)
             {
                 return array.Cast<object>()
-                               .Select(item => ConvertToExpando(item))
+                               .Select(item => ConvertToDictionary(item))
                                .Where(item => item != null)  // Filter out null values
                                .ToList();
             }
@@ -5012,12 +4997,11 @@ namespace TemplateInterpreter
         private object ConvertToSerializable(object obj)
         {
             if (obj == null) return null;
-
-            // Handle ExpandoObject (dynamic objects)
-            if (obj is ExpandoObject expando)
+            
+            if (obj is IDictionary<string, dynamic>)
             {
                 var dict = new Dictionary<string, object>();
-                foreach (var kvp in (IDictionary<string, object>)expando)
+                foreach (var kvp in (IDictionary<string, object>)obj)
                 {
                     dict[kvp.Key] = ConvertToSerializable(kvp.Value);
                 }
@@ -5404,11 +5388,6 @@ namespace TemplateInterpreter
                 return string.Concat("{",
                     string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key], true)))), "}");
             }
-            else if (evaluated is ExpandoObject expando)
-            {
-                return string.Concat("{",
-                    string.Join(", ", expando.Select(kvp => string.Concat(kvp.Key, ": ", FormatOutput(kvp.Value, true)))), "}");
-            }
             else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
                 return "lambda()";
@@ -5459,11 +5438,6 @@ namespace TemplateInterpreter
             {
                 return string.Concat("{",
                     string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
-            }
-            else if (evaluated is ExpandoObject expando)
-            {
-                return string.Concat("{",
-                    string.Join(",", expando.Select(kvp => string.Concat("\"", kvp.Key, "\"", ":", JsonSerialize(kvp.Value)))), "}");
             }
             else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
@@ -5558,7 +5532,7 @@ namespace TemplateInterpreter
 
     public interface IDataverseService
     {
-        List<ExpandoObject> RetrieveMultiple(string fetchXml);
+        List<IDictionary<string, object>> RetrieveMultiple(string fetchXml);
     }
 
     public class DataverseService : IDataverseService
@@ -5570,20 +5544,20 @@ namespace TemplateInterpreter
             _organizationService = organizationService ?? throw new ArgumentNullException(nameof(organizationService));
         }
 
-        public List<ExpandoObject> RetrieveMultiple(string fetchXml)
+        public List<IDictionary<string, object>> RetrieveMultiple(string fetchXml)
         {
             var fetch = new FetchExpression(fetchXml);
             var results = _organizationService.RetrieveMultiple(fetch);
-            return ConvertToExpandoObjects(results);
+            return ConvertToObjects(results);
         }
 
-        private List<ExpandoObject> ConvertToExpandoObjects(EntityCollection entityCollection)
+        private List<IDictionary<string, object>> ConvertToObjects(EntityCollection entityCollection)
         {
-            var expandoObjects = new List<ExpandoObject>();
+            var dicts = new List<IDictionary<string, object>>();
 
             foreach (var entity in entityCollection.Entities)
             {
-                var expando = new ExpandoObject() as IDictionary<string, object>;
+                var dict = new Dictionary<string, object>();
 
                 foreach (var attribute in entity.Attributes)
                 {
@@ -5594,15 +5568,15 @@ namespace TemplateInterpreter
                         var value = ConvertAttributeValue(attribute.Value);
                         if (value != null)
                         {
-                            expando[attribute.Key] = value;
+                            dict[attribute.Key] = value;
                         }
                     }
                 }
 
-                expandoObjects.Add(expando as ExpandoObject);
+                dicts.Add(dict);
             }
 
-            return expandoObjects;
+            return dicts;
         }
 
         private object ConvertAttributeValue(object attributeValue)

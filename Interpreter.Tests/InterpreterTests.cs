@@ -1620,7 +1620,7 @@ Line 3
                 {{ person.name }},{{ person.age }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("John,30"));
@@ -1643,7 +1643,7 @@ Line 3
                 {{ data.person.name }},{{ data.person.address.street }},{{ data.person.address.city }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("John,123 Main St,Boston"));
@@ -1658,7 +1658,7 @@ Line 3
                 {{ for num in numbers }}{{ num }}{{ if num != 5 }},{{ /if }}{{ /for }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("1,2,3,4,5"));
@@ -1681,7 +1681,7 @@ Line 3
 {{ if contains(person, ""address"") }}has_address{{ /if }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("has_name\r\nhas_age"));
@@ -1696,7 +1696,7 @@ Line 3
                 {{ length(numbers) }},{{ for num in numbers }}{{ num }}{{ if num != 3 }},{{ /if }}{{ /for }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("3,1,2,3"));
@@ -1714,7 +1714,7 @@ Line 3
                 {{ for person in people }}{{ person.name }}:{{ person.age }}{{ if person != last(people) }},{{ /if }}{{ /for }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("John:30,Jane:25"));
@@ -1733,7 +1733,7 @@ Line 3
                 {{ if flags.isDeleted }}deleted{{ /if }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("active"));
@@ -1752,7 +1752,7 @@ Line 3
                 {{ floor(data.price * data.quantity - data.discount) }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("29"));
@@ -1767,7 +1767,7 @@ Line 3
                 {{ length(keys(obj)) }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("0"));
@@ -1782,7 +1782,7 @@ Line 3
                 {{ length(arr) }}";
 
             // Act
-            var result = _interpreter.Interpret(template, new { });
+            var result = _interpreter.Interpret(template, _emptyData);
 
             // Assert
             Assert.That(result.Trim(), Is.EqualTo("0"));
@@ -1795,7 +1795,7 @@ Line 3
             var template = @"{{ fromJson(""{invalid json}"") }}";
 
             // Act & Assert
-            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new { }));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, _emptyData));
         }
 
         [Test]
@@ -1805,7 +1805,7 @@ Line 3
             var template = "{{ fromJson(null) }}";
 
             // Act & Assert
-            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new { }));
+            Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, _emptyData));
         }
 
         [Test]
