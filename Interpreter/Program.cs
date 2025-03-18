@@ -2153,21 +2153,7 @@ namespace TemplateInterpreter
                 return dict[_fieldName];
             }
 
-            // Handle regular objects using reflection
-            var property = obj.GetType().GetProperty(_fieldName);
-            if (property == null)
-            {
-                throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
-            }
-
-            var value = property.GetValue(obj);
-
-            if (TypeHelper.IsConvertibleToDecimal(value))
-            {
-                value = (decimal)value;
-            }
-
-            return value;
+            throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
         }
 
         public override string ToStackString()

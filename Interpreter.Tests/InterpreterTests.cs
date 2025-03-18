@@ -1494,7 +1494,9 @@ Line 3
             // Arrange
             var template = "{{capture x}}Name: {{user.name}}{{/capture}}Captured: {{x}}";
             dynamic data = new ExpandoObject();
-            ((IDictionary<string, object>)data).Add("user", new { name = "John" });
+            dynamic name = new ExpandoObject();
+            ((IDictionary<string, object>)name).Add("name", "John");
+            ((IDictionary<string, object>)data).Add("user", name);
 
             // Act
             var result = _interpreter.Interpret(template, data);
