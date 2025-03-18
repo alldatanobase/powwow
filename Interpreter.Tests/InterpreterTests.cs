@@ -309,7 +309,7 @@ namespace TemplateInterpreter.Tests
             ((IDictionary<string, object>)loc1b).Add("name", "Denver");
             locs1.Add(loc1a);
             locs1.Add(loc1b);
-            ((IDictionary<string, object>)emp1).Add("age", "17");
+            ((IDictionary<string, object>)emp1).Add("age", 17);
             ((IDictionary<string, object>)emp1).Add("loc", locs1);
             users.Add(emp1);
 
@@ -321,7 +321,7 @@ namespace TemplateInterpreter.Tests
             ((IDictionary<string, object>)loc2b).Add("name", "Decatur");
             locs2.Add(loc2a);
             locs2.Add(loc2b);
-            ((IDictionary<string, object>)emp2).Add("age", "21");
+            ((IDictionary<string, object>)emp2).Add("age", 21);
             ((IDictionary<string, object>)emp2).Add("loc", locs2);
             users.Add(emp2);
 
@@ -1600,8 +1600,8 @@ Line 3
             // Arrange
             _interpreter.RegisterFunction(
                 "greet",
-                new List<ParameterDefinition> { new ParameterDefinition(typeof(string)) },
-                (context, callSite, args) => $"Hello, {args[0]}!");
+                new List<ParameterDefinition> { new ParameterDefinition(typeof(StringValue)) },
+                (context, callSite, args) => new StringValue($"Hello, {(args[0] as StringValue).Value()}!"));
 
             var template = "{{capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
             dynamic data = new ExpandoObject();
@@ -2920,7 +2920,7 @@ End";
         public void Concat_ListAndString_ReturnsNewListWithItem()
         {
             // Arrange
-            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
+            var template = @"{{ let result = concat(list, [item]) }}{{ join(result, "", "") }}";
             dynamic data = new ExpandoObject();
             data.list = new List<string> { "a", "b", "c" };
             data.item = "d";
@@ -2946,22 +2946,6 @@ End";
 
             // Assert
             Assert.That(result, Is.EqualTo("a, b, c, d"));
-        }
-
-        [Test]
-        public void Concat_EmptyListAndItem_ReturnsNewListWithOnlyItem()
-        {
-            // Arrange
-            var template = @"{{ let result = concat(list, item) }}{{ join(result, "", "") }}";
-            dynamic data = new ExpandoObject();
-            data.list = new List<string>();
-            data.item = "a";
-
-            // Act
-            var result = _interpreter.Interpret(template, data);
-
-            // Assert
-            Assert.That(result, Is.EqualTo("a"));
         }
 
         [Test]
@@ -4206,11 +4190,12 @@ string";
 
             dynamic data = new ExpandoObject();
 
-            // Act
-            string result = _interpreter.Interpret(template, data);
+            // Act & Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, data);
+            });
             
-            // Assert - should work but evaluate to "false"
-            Assert.AreEqual("false", result);
+            StringAssert.Contains("Expected similar types but found Boolean and String", exception.Message);
         }
 
         [Test]

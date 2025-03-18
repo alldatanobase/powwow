@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Reflection;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -28,7 +27,8 @@ namespace TemplateInterpreter
         Boolean,
         DateTime,
         Lambda,
-        Lazy
+        Lazy,
+        Function
     }
 
     public abstract class Value
@@ -42,6 +42,11 @@ namespace TemplateInterpreter
             this._type = type;
         }
 
+        public dynamic Unbox()
+        {
+            return _value;
+        }
+
         public ValueType TypeOf()
         {
             return _type;
@@ -51,23 +56,55 @@ namespace TemplateInterpreter
         {
             return _value.ToString();
         }
+
+        public bool ExpectType(ValueType type, ExecutionContext context)
+        {
+            if (_type == type)
+            {
+                return true;
+            }
+            else
+            {
+                throw new TemplateEvaluationException($"Expected type {type} but found {_type}.", context);
+            }
+        }
     }
 
     public static class ValueFactory
     {
         public static Value Create(dynamic value)
         {
-            if (value is IDictionary<string, dynamic> dynamicObj)
+            if (value is IDictionary<string, dynamic> dict)
             {
                 IDictionary<string, Value> valueObj = new Dictionary<string, Value>();
-                foreach (var key in dynamicObj.Keys)
+                foreach (var key in dict.Keys)
                 {
-                    valueObj[key] = ValueFactory.Create(dynamicObj[key]);
+                    valueObj[key] = ValueFactory.Create(dict[key]);
                 }
                 return new ObjectValue(valueObj);
             }
-            else if (value is IEnumerable<dynamic> dynamicArr) {
-                return new ArrayValue(dynamicArr.Select(item => ValueFactory.Create(item)) as IEnumerable<Value>);
+            else if (value is IEnumerable<dynamic> ||
+                value is IEnumerable<decimal> ||
+                value is IEnumerable<int> ||
+                value is IEnumerable<long> ||
+                value is IEnumerable<double> ||
+                value is IEnumerable<float> ||
+                value is IEnumerable<byte> ||
+                value is IEnumerable<sbyte> ||
+                value is IEnumerable<short> ||
+                value is IEnumerable<ushort> ||
+                value is IEnumerable<uint> ||
+                value is IEnumerable<string> ||
+                value is IEnumerable<bool> ||
+                value is IEnumerable<DateTime> ||
+                value is IEnumerable<IDictionary<string, dynamic>>)
+            {
+                var arr = new List<Value>();
+                foreach (var item in value)
+                {
+                    arr.Add(ValueFactory.Create(item));
+                }
+                return new ArrayValue(arr);
             }
             else if (value is string || value is char)
             {
@@ -85,10 +122,31 @@ namespace TemplateInterpreter
             {
                 return new DateTimeValue(value);
             }
+            else if (value is object)
+            {
+                IDictionary<string, Value> valueObj = new Dictionary<string, Value>();
+                var properties = value.GetType().GetProperties();
+                foreach (var property in properties)
+                {
+                    valueObj[property.Name] = ValueFactory.Create(property.GetValue(value));
+                }
+                return new ObjectValue(valueObj);
+            }
             else
             {
                 throw new InitializationException("Unable to resolve initial data object as a dynamically typed language object. Encountered an unxpected type.");
             }
+        }
+    }
+
+
+    public class FunctionReferenceValue : Value
+    {
+        public string Name { get; }
+
+        public FunctionReferenceValue(string name) : base(name, ValueType.Function)
+        {
+            Name = name;
         }
     }
 
@@ -135,7 +193,7 @@ namespace TemplateInterpreter
     public class ObjectValue : Value
     {
         public ObjectValue(IDictionary<string, Value> value) : base(value, ValueType.Object) { }
-        
+
         public IDictionary<string, Value> Value()
         {
             return _value;
@@ -175,7 +233,7 @@ namespace TemplateInterpreter
             _isEvaluated = false;
         }
 
-        public dynamic Evaluate()
+        public Value Evaluate()
         {
             if (!_isEvaluated)
             {
@@ -210,7 +268,7 @@ namespace TemplateInterpreter
             RegisterDataverseFunctions();
         }
 
-        public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation)
+        public void RegisterFunction(string name, List<ParameterDefinition> parameterTypes, Func<ExecutionContext, AstNode, List<Value>, Value> implementation)
         {
             _functionRegistry.Register(name, parameterTypes, implementation);
         }
@@ -219,7 +277,7 @@ namespace TemplateInterpreter
         {
             _functionRegistry.Register("fetch",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
@@ -228,7 +286,7 @@ namespace TemplateInterpreter
                         throw new TemplateEvaluationException("Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.", context);
                     }
 
-                    var fetchXml = args[0] as string;
+                    var fetchXml = (args[0] as StringValue).Value();
 
                     if (string.IsNullOrEmpty(fetchXml))
                     {
@@ -252,16 +310,16 @@ namespace TemplateInterpreter
 
             return ast.Evaluate(new ExecutionContext(
                 data != null ? ValueFactory.Create(data) as ObjectValue : new ObjectValue(new Dictionary<string, Value>()),
-                _functionRegistry, 
-                null, 
-                _maxRecursionDepth, 
-                ast));
+                _functionRegistry,
+                null,
+                _maxRecursionDepth,
+                ast)).ToString();
         }
 
         private AstNode ProcessIncludes(AstNode node, HashSet<string> descendantIncludes = null)
         {
             descendantIncludes = descendantIncludes ?? new HashSet<string>();
-            
+
             // Handle IncludeNode
             if (node is IncludeNode includeNode)
             {
@@ -321,9 +379,9 @@ namespace TemplateInterpreter
 
     public class ExecutionContext
     {
-        protected readonly dynamic _data;
-        private readonly Dictionary<string, dynamic> _iteratorValues;
-        private readonly Dictionary<string, dynamic> _variables;
+        protected readonly ObjectValue _data;
+        private readonly Dictionary<string, Value> _iteratorValues;
+        private readonly Dictionary<string, Value> _variables;
         private readonly FunctionRegistry _functionRegistry;
         protected readonly ExecutionContext _parentContext;
         protected readonly int _maxDepth;
@@ -343,8 +401,8 @@ namespace TemplateInterpreter
             AstNode callSite)
         {
             _data = data;
-            _iteratorValues = new Dictionary<string, dynamic>();
-            _variables = new Dictionary<string, dynamic>();
+            _iteratorValues = new Dictionary<string, Value>();
+            _variables = new Dictionary<string, Value>();
             _functionRegistry = functionRegistry;
             _parentContext = parentContext;
             _maxDepth = maxDepth;
@@ -361,7 +419,7 @@ namespace TemplateInterpreter
             }
         }
 
-        public virtual void DefineVariable(string name, dynamic value)
+        public virtual void DefineVariable(string name, Value value)
         {
             // Check if already defined as a variable, an iterator variable, or defined in the data context
             if (_variables.ContainsKey(name) || _iteratorValues.ContainsKey(name) || TryResolveValue(name, out _))
@@ -375,7 +433,7 @@ namespace TemplateInterpreter
             _variables[name] = value;
         }
 
-        public ExecutionContext CreateIteratorContext(string iteratorName, dynamic value, AstNode callSite)
+        public ExecutionContext CreateIteratorContext(string iteratorName, Value value, AstNode callSite)
         {
             var newContext = new ExecutionContext(_data, _functionRegistry, this, MaxDepth, callSite);
 
@@ -405,7 +463,7 @@ namespace TemplateInterpreter
             return _data;
         }
 
-        protected bool TryGetDataProperty(string propertyName, out dynamic value)
+        protected bool TryGetDataProperty(string propertyName, out Value value)
         {
             value = null;
 
@@ -414,26 +472,14 @@ namespace TemplateInterpreter
                 return false;
             }
 
-            if (_data is IDictionary<string, object> dict)
-            {
-                return dict.TryGetValue(propertyName, out value);
-            }
-
-            PropertyInfo propertyInfo = _data.GetType().GetProperty(propertyName);
-            if (propertyInfo != null)
-            {
-                value = _data[propertyName];
-                return true;
-            }
-
-            return false;
+            return _data.Value().TryGetValue(propertyName, out value);
         }
 
-        public virtual bool TryResolveNonShadowableValue(string path, out dynamic value)
+        public virtual bool TryResolveNonShadowableValue(string path, out Value value)
         {
             value = null;
             var parts = path.Split('.');
-            dynamic current = null;
+            Value current = null;
 
             if (_iteratorValues.ContainsKey(parts[0]))
             {
@@ -461,11 +507,16 @@ namespace TemplateInterpreter
             {
                 try
                 {
-                    current = ((IDictionary<string, object>)current)[part];
-                    if (TypeHelper.IsConvertibleToDecimal(current))
+                    IDictionary<string, Value> currentObject = null;
+                    if (current is ObjectValue obj)
                     {
-                        current = (decimal)current;
+                        currentObject = obj.Value();
                     }
+                    else if (current is IDictionary<string, Value> dict)
+                    {
+                        currentObject = dict;
+                    }
+                    current = currentObject[part];
                 }
                 catch
                 {
@@ -477,11 +528,11 @@ namespace TemplateInterpreter
             return true;
         }
 
-        public virtual bool TryResolveValue(string path, out dynamic value)
+        public virtual bool TryResolveValue(string path, out Value value)
         {
             value = null;
             var parts = path.Split('.');
-            dynamic current = null;
+            Value current = null;
 
             // Check if the first part is an iterator
             if (_iteratorValues.ContainsKey(parts[0]))
@@ -513,20 +564,15 @@ namespace TemplateInterpreter
                 {
                     return false;
                 }
-
-                if (TypeHelper.IsConvertibleToDecimal(current))
-                {
-                    current = (decimal)current;
-                }
             }
 
             value = current;
             return true;
         }
 
-        public virtual dynamic ResolveValue(string path)
+        public virtual Value ResolveValue(string path)
         {
-            if (TryResolveValue(path, out dynamic value))
+            if (TryResolveValue(path, out Value value))
             {
                 return value;
             }
@@ -536,20 +582,20 @@ namespace TemplateInterpreter
 
     public class LambdaExecutionContext : ExecutionContext
     {
-        private readonly Dictionary<string, dynamic> _parameters;
-        private readonly Dictionary<string, dynamic> _variables;
+        private readonly Dictionary<string, Value> _parameters;
+        private readonly Dictionary<string, Value> _variables;
         private readonly ExecutionContext _definitionContext;
 
         public LambdaExecutionContext(
             ExecutionContext parentContext,
             ExecutionContext definitionContext,
             List<string> parameterNames,
-            List<dynamic> parameterValues,
+            List<Value> parameterValues,
             AstNode node)
             : base(parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth, node)
         {
-            _parameters = new Dictionary<string, dynamic>();
-            _variables = new Dictionary<string, dynamic>();
+            _parameters = new Dictionary<string, Value>();
+            _variables = new Dictionary<string, Value>();
             _definitionContext = definitionContext;
 
             if (parameterNames.Count > parameterValues.Count)
@@ -576,7 +622,7 @@ namespace TemplateInterpreter
             return _parameters[name];
         }
 
-        public override void DefineVariable(string name, dynamic value)
+        public override void DefineVariable(string name, Value value)
         {
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
@@ -604,7 +650,7 @@ namespace TemplateInterpreter
             _variables[name] = value;
         }
 
-        public bool TryGetParameterFromAnyContext(string name, out dynamic value)
+        public bool TryGetParameterFromAnyContext(string name, out Value value)
         {
             value = null;
 
@@ -637,11 +683,11 @@ namespace TemplateInterpreter
             return false;
         }
 
-        public override bool TryResolveNonShadowableValue(string path, out dynamic value)
+        public override bool TryResolveNonShadowableValue(string path, out Value value)
         {
             value = null;
             var parts = path.Split('.');
-            dynamic current = null;
+            Value current = null;
 
             if (_variables.TryGetValue(parts[0], out current))
             {
@@ -664,11 +710,16 @@ namespace TemplateInterpreter
             {
                 try
                 {
-                    current = ((IDictionary<string, object>)current)[part];
-                    if (TypeHelper.IsConvertibleToDecimal(current))
+                    IDictionary<string, Value> currentObject = null;
+                    if (current is ObjectValue obj)
                     {
-                        current = (decimal)current;
+                        currentObject = obj.Value();
                     }
+                    else if (current is IDictionary<string, Value> dict)
+                    {
+                        currentObject = dict;
+                    }
+                    current = currentObject[part];
                 }
                 catch
                 {
@@ -680,11 +731,11 @@ namespace TemplateInterpreter
             return true;
         }
 
-        public override bool TryResolveValue(string path, out dynamic value)
+        public override bool TryResolveValue(string path, out Value value)
         {
             value = null;
             var parts = path.Split('.');
-            dynamic current = null;
+            Value current = null;
 
             if (_variables.TryGetValue(parts[0], out current))
             {
@@ -696,7 +747,7 @@ namespace TemplateInterpreter
             }
             else
             {
-                dynamic descendentValue;
+                Value descendentValue;
 
                 if (_definitionContext.TryResolveValue(path, out descendentValue))
                 {
@@ -718,32 +769,36 @@ namespace TemplateInterpreter
                 {
                     return false;
                 }
-
-                if (TypeHelper.IsConvertibleToDecimal(current))
-                {
-                    current = (decimal)current;
-                }
             }
 
             value = current;
             return true;
         }
 
-        public override dynamic ResolveValue(string path)
+        public override Value ResolveValue(string path)
         {
             var parts = path.Split('.');
 
             // First check if it's a parameter
             if (_parameters.ContainsKey(parts[0]))
             {
-                dynamic current = _parameters[parts[0]];
+                Value current = _parameters[parts[0]];
 
                 // Handle nested property access for parameters
                 for (int i = 1; i < parts.Length; i++)
                 {
                     try
                     {
-                        current = ((IDictionary<string, object>)current)[parts[i]];
+                        IDictionary<string, Value> currentObject = null;
+                        if (current is ObjectValue obj)
+                        {
+                            currentObject = obj.Value();
+                        }
+                        else if (current is IDictionary<string, Value> dict)
+                        {
+                            currentObject = dict;
+                        }
+                        current = currentObject[parts[i]];
                     }
                     catch
                     {
@@ -755,14 +810,23 @@ namespace TemplateInterpreter
             }
             else if (_variables.ContainsKey(parts[0]))
             {
-                dynamic current = _variables[parts[0]];
+                Value current = _variables[parts[0]];
 
                 // Handle nested property access for parameters
                 for (int i = 1; i < parts.Length; i++)
                 {
                     try
                     {
-                        current = ((IDictionary<string, object>)current)[parts[i]];
+                        IDictionary<string, Value> currentObject = null;
+                        if (current is ObjectValue obj)
+                        {
+                            currentObject = obj.Value();
+                        }
+                        else if (current is IDictionary<string, Value> dict)
+                        {
+                            currentObject = dict;
+                        }
+                        current = currentObject[parts[i]];
                     }
                     catch
                     {
@@ -1781,7 +1845,7 @@ namespace TemplateInterpreter
             Location = location;
         }
 
-        public abstract dynamic Evaluate(ExecutionContext context);
+        public abstract Value Evaluate(ExecutionContext context);
 
         public override string ToString()
         {
@@ -1800,9 +1864,9 @@ namespace TemplateInterpreter
             _content = content;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _content;
+            return new StringValue(_content);
         }
 
         public override string ToStackString()
@@ -1834,7 +1898,7 @@ namespace TemplateInterpreter
             _includedTemplate = template;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             if (_includedTemplate == null)
             {
@@ -1870,9 +1934,9 @@ namespace TemplateInterpreter
             _text = text;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _text;
+            return new StringValue(_text);
         }
 
         public override string ToStackString()
@@ -1895,9 +1959,9 @@ namespace TemplateInterpreter
             _text = text;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _text;
+            return new StringValue(_text);
         }
 
         public override string ToStackString()
@@ -1920,9 +1984,9 @@ namespace TemplateInterpreter
             _text = text;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _text;
+            return new StringValue(_text);
         }
 
         public override string ToStackString()
@@ -1947,7 +2011,7 @@ namespace TemplateInterpreter
             _arguments = arguments;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var parentContext = context;
             var currentContext = new ExecutionContext(
@@ -1960,19 +2024,20 @@ namespace TemplateInterpreter
 
             // Evaluate the callable, but handle special cases
             var callable = _callable.Evaluate(currentContext);
+            var callableValue = callable.Unbox();
 
             var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), currentContext) ?
-                _arguments.Select(arg => new LazyValue(arg, currentContext)).ToList<dynamic>() :
-                _arguments.Select(arg => arg.Evaluate(currentContext)).ToList();
+                _arguments.Select(arg => new LazyValue(arg, currentContext)).ToList<Value>() :
+                _arguments.Select(arg => arg.Evaluate(currentContext)).ToList<Value>();
 
             // Now handle the callable based on its type
-            if (callable is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> lambdaFunc)
+            if (callable is LambdaValue lambdaFunc)
             {
                 // Direct lambda invocation
                 // Lambda establishes its own new child context
-                return lambdaFunc(parentContext, this, args);
+                return lambdaFunc.Value()(parentContext, this, args);
             }
-            else if (callable is FunctionInfo functionInfo)
+            else if (callable is FunctionReferenceValue functionInfo)
             {
                 var registry = context.GetFunctionRegistry();
 
@@ -1980,12 +2045,12 @@ namespace TemplateInterpreter
                 if (context is LambdaExecutionContext lambdaContext &&
                     lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
                 {
-                    if (paramValue is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> paramFunc)
+                    if (paramValue is LambdaValue paramFunc)
                     {
                         // Lambda establishes its own new child context
-                        return paramFunc(parentContext, this, args);
+                        return paramFunc.Value()(parentContext, this, args);
                     }
-                    else if (paramValue is FunctionInfo paramFuncInfo)
+                    else if (paramValue is FunctionReferenceValue paramFuncInfo)
                     {
                         if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs, currentContext))
                         {
@@ -2001,10 +2066,10 @@ namespace TemplateInterpreter
                 // Check if this is a variable that contains a function
                 if (context.TryResolveValue(functionInfo.Name, out var variableValue))
                 {
-                    if (variableValue is Func<ExecutionContext, AstNode, List<dynamic>, dynamic> variableFunc)
+                    if (variableValue is LambdaValue variableFunc)
                     {
                         // Lambda establishes its own new child context
-                        return variableFunc(parentContext, this, args);
+                        return variableFunc.Value()(parentContext, this, args);
                     }
                 }
 
@@ -2024,10 +2089,10 @@ namespace TemplateInterpreter
                 currentContext);
         }
 
-        private bool IsLazilyEvaluatedFunction(dynamic callable, int argumentCount, ExecutionContext context)
+        private bool IsLazilyEvaluatedFunction(Value callable, int argumentCount, ExecutionContext context)
         {
             // Check if this is a function that requires lazy evaluation
-            if (callable is FunctionInfo functionInfo)
+            if (callable is FunctionReferenceValue functionInfo)
             {
                 var registry = context.GetFunctionRegistry();
                 return registry.LazyFunctionExists(functionInfo.Name, argumentCount);
@@ -2048,16 +2113,6 @@ namespace TemplateInterpreter
         }
     }
 
-    public class FunctionInfo
-    {
-        public string Name { get; }
-
-        public FunctionInfo(string name)
-        {
-            Name = name;
-        }
-    }
-
     public class FunctionReferenceNode : AstNode
     {
         private readonly string _functionName;
@@ -2067,9 +2122,9 @@ namespace TemplateInterpreter
             _functionName = functionName;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return new FunctionInfo(_functionName);
+            return new FunctionReferenceValue(_functionName);
         }
 
         public override string ToStackString()
@@ -2144,13 +2199,13 @@ namespace TemplateInterpreter
             _finalExpression = finalExpression;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var definitionContext = context;
 
             // Return a delegate that can be called later with parameters
             // Context is captured here, during evaluation, not during parsing
-            return new Func<ExecutionContext, AstNode, List<dynamic>, dynamic>((callerContext, callSite, args) =>
+            return new LambdaValue(new Func<ExecutionContext, AstNode, List<Value>, Value>((callerContext, callSite, args) =>
             {
                 // Create a new context that includes both captured context and new parameters
                 var lambdaContext = new LambdaExecutionContext(callerContext, definitionContext, _parameters, args, callSite);
@@ -2163,7 +2218,7 @@ namespace TemplateInterpreter
                 }
 
                 return _finalExpression.Evaluate(lambdaContext);
-            });
+            }));
         }
 
         public override string ToStackString()
@@ -2191,11 +2246,11 @@ namespace TemplateInterpreter
             _expression = expression;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var value = _expression.Evaluate(context);
             context.DefineVariable(_variableName, value);
-            return string.Empty; // Let statements don't produce output
+            return new StringValue(string.Empty); // Let statements don't produce output
         }
 
         public override string ToStackString()
@@ -2220,11 +2275,11 @@ namespace TemplateInterpreter
             _body = body;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var result = _body.Evaluate(context);
-            context.DefineVariable(_variableName, result.ToString());
-            return string.Empty; // Capture doesn't output anything directly
+            context.DefineVariable(_variableName, result);
+            return new StringValue(string.Empty); // Capture doesn't output anything directly
         }
 
         public override string ToStackString()
@@ -2247,16 +2302,16 @@ namespace TemplateInterpreter
             _fields = fields;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            var dict = new Dictionary<string, object>();
+            var dict = new Dictionary<string, Value>();
 
             foreach (var field in _fields)
             {
                 dict[field.Key] = field.Value.Evaluate(context);
             }
 
-            return dict;
+            return new ObjectValue(dict);
         }
 
         public override string ToStackString()
@@ -2282,21 +2337,22 @@ namespace TemplateInterpreter
             _fieldName = fieldName;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            var obj = _object.Evaluate(context);
-            if (obj == null)
+            var evaluated = _object.Evaluate(context);
+            if (evaluated == null)
             {
                 throw new TemplateEvaluationException($"Cannot access field '{_fieldName}' on null object", context);
             }
 
-            if (obj is IDictionary<string, object> dict)
+            if (evaluated is ObjectValue obj)
             {
-                if (!dict.ContainsKey(_fieldName))
+                var value = obj.Value();
+                if (!value.ContainsKey(_fieldName))
                 {
                     throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
                 }
-                return dict[_fieldName];
+                return value[_fieldName];
             }
 
             throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
@@ -2322,9 +2378,9 @@ namespace TemplateInterpreter
             _elements = elements;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _elements.Select(element => element.Evaluate(context)).ToList();
+            return new ArrayValue(_elements.Select(element => element.Evaluate(context)).ToList());
         }
 
         public override string ToStackString()
@@ -2349,7 +2405,7 @@ namespace TemplateInterpreter
             _path = path;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             return context.ResolveValue(_path);
         }
@@ -2374,9 +2430,9 @@ namespace TemplateInterpreter
             _value = value;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _value;
+            return new StringValue(_value);
         }
 
         public override string ToStackString()
@@ -2399,9 +2455,9 @@ namespace TemplateInterpreter
             _value = decimal.Parse(value);
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _value;
+            return new NumberValue(_value);
         }
 
         public override string ToStackString()
@@ -2424,9 +2480,9 @@ namespace TemplateInterpreter
             _value = value;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
-            return _value;
+            return new BooleanValue(_value);
         }
 
         public override string ToStackString()
@@ -2451,14 +2507,20 @@ namespace TemplateInterpreter
             _expression = expression;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var value = _expression.Evaluate(context);
 
             switch (_operator)
             {
                 case TokenType.Not:
-                    return !Convert.ToBoolean(value);
+                    if (!(value is BooleanValue boolValue))
+                    {
+                        throw new TemplateEvaluationException(
+                            $"Expected value of type boolean but found {value.GetType()}",
+                            context);
+                    }
+                    return new BooleanValue(!boolValue.Value());
                 default:
                     throw new TemplateEvaluationException(string.Format("Unknown unary operator: {0}", _operator), context);
             }
@@ -2488,18 +2550,22 @@ namespace TemplateInterpreter
             _right = right;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             // short circuit eval for &&
             if (_operator == TokenType.And)
             {
-                return Convert.ToBoolean(_left.Evaluate(context)) && Convert.ToBoolean(_right.Evaluate(context));
+                return new BooleanValue(
+                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context) &&
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context));
             }
 
             // short circuit eval for ||
             if (_operator == TokenType.Or)
             {
-                return Convert.ToBoolean(_left.Evaluate(context)) || Convert.ToBoolean(_right.Evaluate(context));
+                return new BooleanValue(
+                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context) ||
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context));
             }
 
             var left = _left.Evaluate(context);
@@ -2510,25 +2576,57 @@ namespace TemplateInterpreter
             switch (_operator)
             {
                 case TokenType.Plus:
-                    return Convert.ToDecimal(left) + Convert.ToDecimal(right);
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context) + TypeHelper.UnboxNumber(right, context));
                 case TokenType.Minus:
-                    return Convert.ToDecimal(left) - Convert.ToDecimal(right);
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context) - TypeHelper.UnboxNumber(right, context));
                 case TokenType.Multiply:
-                    return Convert.ToDecimal(left) * Convert.ToDecimal(right);
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context) * TypeHelper.UnboxNumber(right, context));
                 case TokenType.Divide:
-                    return Convert.ToDecimal(left) / Convert.ToDecimal(right);
-                case TokenType.Equal:
-                    return Equals(left, right);
-                case TokenType.NotEqual:
-                    return !Equals(left, right);
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context) / TypeHelper.UnboxNumber(right, context));
                 case TokenType.LessThan:
-                    return Convert.ToDecimal(left) < Convert.ToDecimal(right);
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) < TypeHelper.UnboxNumber(right, context));
                 case TokenType.LessThanEqual:
-                    return Convert.ToDecimal(left) <= Convert.ToDecimal(right);
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) <= TypeHelper.UnboxNumber(right, context));
                 case TokenType.GreaterThan:
-                    return Convert.ToDecimal(left) > Convert.ToDecimal(right);
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) > TypeHelper.UnboxNumber(right, context));
                 case TokenType.GreaterThanEqual:
-                    return Convert.ToDecimal(left) >= Convert.ToDecimal(right);
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) >= TypeHelper.UnboxNumber(right, context));
+                case TokenType.Equal:
+                    if (left.TypeOf() != right.TypeOf())
+                    {
+                        throw new TemplateEvaluationException(
+                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}", 
+                            context);
+                    }
+                    else
+                    {
+                        if (left is DateTimeValue leftDateTime && right is DateTimeValue rightDateTIme)
+                        {
+                            return new BooleanValue(Equals(leftDateTime.Value().Ticks, rightDateTIme.Value().Ticks));
+                        }
+                        else
+                        {
+                            return new BooleanValue(Equals(left.Unbox(), right.Unbox()));
+                        }
+                    }
+                case TokenType.NotEqual:
+                    if (left.TypeOf() != right.TypeOf())
+                    {
+                        throw new TemplateEvaluationException(
+                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}", 
+                            context);
+                    }
+                    else
+                    {
+                        if (left is DateTimeValue leftDateTime && right is DateTimeValue rightDateTIme)
+                        {
+                            return new BooleanValue(!Equals(leftDateTime.Value().Ticks, rightDateTIme.Value().Ticks));
+                        }
+                        else
+                        {
+                            return new BooleanValue(!Equals(left.Unbox(), right.Unbox()));
+                        }
+                    }
                 default:
                     throw new TemplateEvaluationException(string.Format("Unknown binary operator: {0}", _operator), context);
             }
@@ -2564,7 +2662,7 @@ namespace TemplateInterpreter
             _body = body;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             // Check if iterator name conflicts with existing variable
             if (context.TryResolveValue(_iteratorName, out _))
@@ -2575,21 +2673,22 @@ namespace TemplateInterpreter
             }
 
             var collection = _collection.Evaluate(context);
-            if (!(collection is System.Collections.IEnumerable))
+            if (collection is ArrayValue array)
+            {
+                var result = new StringBuilder();
+                foreach (var item in array.Value())
+                {
+                    var iterationContext = context.CreateIteratorContext(_iteratorName, item, this);
+                    result.Append(_body.Evaluate(iterationContext));
+                }
+                return new StringValue(result.ToString());
+            }
+            else
             {
                 throw new TemplateEvaluationException(
-                    "Each statement requires an enumerable collection",
+                    "Each statement requires an array",
                     context);
             }
-
-            var result = new StringBuilder();
-            foreach (var item in collection)
-            {
-                var iterationContext = context.CreateIteratorContext(_iteratorName, item, this);
-                result.Append(_body.Evaluate(iterationContext));
-            }
-
-            return result.ToString();
         }
 
         public override string ToStackString()
@@ -2630,11 +2729,12 @@ namespace TemplateInterpreter
             _elseBranch = elseBranch;
         }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             foreach (var branch in _conditionalBranches)
             {
-                if (Convert.ToBoolean(branch.Condition.Evaluate(context)))
+                var evaluated = branch.Condition.Evaluate(context);
+                if (TypeHelper.UnboxBoolean(evaluated, context))
                 {
                     return branch.Body.Evaluate(context);
                 }
@@ -2645,7 +2745,7 @@ namespace TemplateInterpreter
                 return _elseBranch.Evaluate(context);
             }
 
-            return string.Empty;
+            return new StringValue(string.Empty);
         }
 
         public override string ToStackString()
@@ -2676,14 +2776,14 @@ namespace TemplateInterpreter
 
         public List<AstNode> Children { get { return _children; } }
 
-        public override dynamic Evaluate(ExecutionContext context)
+        public override Value Evaluate(ExecutionContext context)
         {
             var result = new StringBuilder();
             foreach (var child in _children)
             {
-                result.Append(TypeHelper.FormatOutput(child.Evaluate(context)));
+                result.Append(TypeHelper.FormatOutput(child.Evaluate(context).Unbox()));
             }
-            return result.ToString();
+            return new StringValue(result.ToString());
         }
 
         public override string ToStackString()
@@ -3712,13 +3812,13 @@ namespace TemplateInterpreter
     {
         public string Name { get; }
         public List<ParameterDefinition> Parameters { get; }
-        public Func<ExecutionContext, AstNode, List<dynamic>, dynamic> Implementation { get; }
+        public Func<ExecutionContext, AstNode, List<Value>, Value> Implementation { get; }
         public bool IsLazilyEvaluated { get; }
 
         public FunctionDefinition(
             string name,
             List<ParameterDefinition> parameters,
-            Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation,
+            Func<ExecutionContext, AstNode, List<Value>, Value> implementation,
             bool isLazilyEvaluated)
         {
             Name = name;
@@ -3750,297 +3850,325 @@ namespace TemplateInterpreter
         {
             Register("length",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var enumerable = args[0] as System.Collections.IEnumerable;
+                    var enumerable = (args[0] as ArrayValue).Value();
                     if (enumerable == null)
                     {
                         throw new TemplateEvaluationException("length function requires an enumerable argument", context);
                     }
-                    return Convert.ToDecimal(enumerable.Cast<object>().Count());
+                    return new NumberValue(enumerable.Count());
                 });
 
             Register("length",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0] as string;
+                    var str = (args[0] as StringValue).Value();
                     if (str == null)
                     {
                         throw new TemplateEvaluationException("length function requires a string argument", context);
                     }
-                    return Convert.ToDecimal(str.Length);
+                    return new NumberValue(str.Length);
                 });
 
             Register("empty",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0] as string;
+                    var str = (args[0] as StringValue).Value();
                     if (str == null)
                     {
                         throw new TemplateEvaluationException("length function requires a string argument", context);
                     }
-                    return string.IsNullOrEmpty(str);
+                    return new BooleanValue(string.IsNullOrEmpty(str));
                 });
 
             Register("concat",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str1 = args[0]?.ToString() ?? "";
-                    var str2 = args[1]?.ToString() ?? "";
-                    return str1 + str2;
+                    var first = (args[0] as ArrayValue).Value();
+                    var second = (args[1] as ArrayValue).Value();
+
+                    if (first == null || second == null)
+                    {
+                        throw new TemplateEvaluationException("concat function requires both arguments to be arrays", context);
+                    }
+
+                    // Combine both enumerables into a single list
+                    return new ArrayValue(first.Concat(second));
+                });
+
+            Register("concat",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
+                },
+                (context, callSite, args) =>
+                {
+                    var str1 = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var str2 = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new StringValue(str1 + str2);
                 });
 
             Register("contains",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var searchStr = args[1]?.ToString() ?? "";
-                    return str.Contains(searchStr);
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new BooleanValue(str.Contains(searchStr));
                 });
 
             Register("contains",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(object)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(ObjectValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
                     if (args[0] == null)
-                        return false;
-
-                    var obj = args[0];
-                    var propertyName = args[1]?.ToString() ?? "";
-
-                    // Handle dictionary types
-                    if (obj is IDictionary<string, object> dict)
                     {
-                        return dict.ContainsKey(propertyName);
+                        return new BooleanValue(false);
                     }
 
-                    // For regular objects, check if the property exists
-                    var type = obj.GetType();
-                    var propertyExists = type.GetProperty(propertyName) != null;
+                    var obj = (args[0] as ObjectValue).Value();
+                    var propertyName = (args[1] as StringValue).Value();
 
-                    return propertyExists;
+                    if (string.IsNullOrEmpty(propertyName))
+                    {
+                        return new BooleanValue(true);
+                    }
+
+                    return new BooleanValue(obj.ContainsKey(propertyName));
                 });
 
             Register("startsWith",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var searchStr = args[1]?.ToString() ?? "";
-                    return str.StartsWith(searchStr);
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new BooleanValue(str.StartsWith(searchStr));
                 });
 
             Register("endsWith",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var searchStr = args[1]?.ToString() ?? "";
-                    return str.EndsWith(searchStr);
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new BooleanValue(str.EndsWith(searchStr));
                 });
 
             Register("toUpper",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    return str.ToUpper();
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    return new StringValue(str.ToUpper());
                 });
 
             Register("toLower",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    return str.ToLower();
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    return new StringValue(str.ToLower());
                 });
 
             Register("trim",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    return str.Trim();
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    return new StringValue(str.Trim());
                 });
 
             Register("indexOf",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var searchStr = args[1]?.ToString() ?? "";
-                    return new decimal(str.IndexOf(searchStr));
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new NumberValue(str.IndexOf(searchStr));
                 });
 
             Register("lastIndexOf",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var searchStr = args[1]?.ToString() ?? "";
-                    return new decimal(str.LastIndexOf(searchStr));
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
+                    return new NumberValue(str.LastIndexOf(searchStr));
                 });
 
             Register("substring",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(decimal)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(-1)) // Optional end index
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(NumberValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(-1)) // Optional end index
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0]?.ToString() ?? "";
-                    var startIndex = Convert.ToInt32(args[1]);
-                    var endIndex = Convert.ToInt32(args[2]);
+                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
+                    var startIndex = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var endIndex = Convert.ToInt32((args[2] as NumberValue).Value());
 
                     // If end index is provided, use it; otherwise substring to the end
                     if (endIndex >= 0)
                     {
                         var length = endIndex - startIndex;
-                        return str.Substring(startIndex, length);
+                        return new StringValue(str.Substring(startIndex, length));
                     }
 
-                    return str.Substring(startIndex);
+                    return new StringValue(str.Substring(startIndex));
                 });
 
             Register("range",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal)),
-                    new ParameterDefinition(typeof(decimal)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(NumberValue)),
+                    new ParameterDefinition(typeof(NumberValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = Convert.ToDecimal(args[0]);
-                    var end = Convert.ToDecimal(args[1]);
-                    var step = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as NumberValue).Value();
+                    var end = (args[1] as NumberValue).Value();
+                    var step = (args[2] as NumberValue).Value();
 
                     if (step == 0)
                     {
                         throw new TemplateEvaluationException("range function requires a non-zero step value", context);
                     }
 
-                    var result = new List<decimal>();
+                    var result = new List<NumberValue>();
 
                     // Handle both positive and negative step values
                     if (step > 0)
                     {
                         for (var value = start + step - step; value < end; value += step)
                         {
-                            result.Add(value);
+                            result.Add(new NumberValue(value));
                         }
                     }
                     else
                     {
                         for (var value = start + step - step; value > end; value += step)
                         {
-                            result.Add(value);
+                            result.Add(new NumberValue(value));
                         }
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeYear",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeYear function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeYear function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
                         current = current.AddYears(step);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeMonth",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeMonth function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeMonth function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
                     var originalDay = current.Day;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
 
                         // Use AddMonths to get the next month
                         var nextMonth = current.AddMonths(step);
@@ -4055,255 +4183,306 @@ namespace TemplateInterpreter
                                               current.Millisecond);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeDay",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeDay function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeDay function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
                         current = current.AddDays(step);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeHour",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeHour function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeHour function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
                         current = current.AddHours(step);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeMinute",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeMinute function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeMinute function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
                         current = current.AddMinutes(step);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("rangeSecond",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal), true, new decimal(1))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = args[0] as DateTime?;
-                    var end = args[1] as DateTime?;
-                    var stepDecimal = Convert.ToDecimal(args[2]);
+                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2] as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
+                    {
                         throw new TemplateEvaluationException("rangeSecond function requires valid DateTime parameters", context);
+                    }
 
                     if (step <= 0)
+                    {
                         throw new TemplateEvaluationException("rangeSecond function requires a positive step value", context);
+                    }
 
                     if (start >= end)
-                        return new List<DateTime>();
+                    {
+                        return new ArrayValue(new List<DateTimeValue>());
+                    }
 
-                    var result = new List<DateTime>();
+                    var result = new List<DateTimeValue>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(current);
+                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
                         current = current.AddSeconds(step);
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("filter",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(LambdaValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var collection = args[0] as System.Collections.IEnumerable;
-                    var predicate = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
+                    var collection = (args[0] as ArrayValue).Value();
+                    var predicate = (args[1] as LambdaValue).Value();
 
                     if (collection == null || predicate == null)
                     {
                         throw new TemplateEvaluationException("filter function requires an array and a lambda function", context);
                     }
 
-                    var result = new List<dynamic>();
+                    var result = new List<Value>();
                     foreach (var item in collection)
                     {
-                        var predicateResult = predicate(context, callSite, new List<dynamic> { item });
-                        if (Convert.ToBoolean(predicateResult))
+                        var predicateResult = predicate(context, callSite, new List<Value> { item });
+                        if (predicateResult is BooleanValue boolResult)
                         {
-                            result.Add(item);
+                            if (boolResult.Value())
+                            {
+                                result.Add(item);
+                            }
+                        }
+                        else
+                        {
+                            throw new TemplateEvaluationException(
+                                $"Filter predicate should evaluate to a boolean value but found {predicateResult.GetType()}",
+                                context);
                         }
                     }
 
-                    return result;
+                    return new ArrayValue(result);
                 });
 
             Register("at",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var index = Convert.ToInt32(args[1]);
+                    var array = (args[0] as ArrayValue).Value();
+                    var index = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("at function requires an array as first argument", context);
+                    }
 
-                    var list = array.Cast<object>().ToList();
+                    var list = array.Cast<Value>().ToList();
                     if (index < 0 || index >= list.Count)
+                    {
                         throw new TemplateEvaluationException($"Index {index} is out of bounds for array of length {list.Count}", context);
+                    }
 
                     return list[index];
                 });
 
             Register("first",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
+                    var array = (args[0] as ArrayValue).Value();
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("first function requires an array argument", context);
+                    }
 
-                    var list = array.Cast<object>().ToList();
+                    var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
+                    {
                         throw new TemplateEvaluationException("Cannot get first element of empty array", context);
+                    }
 
                     return list[0];
                 });
 
             Register("rest",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
+                    var array = (args[0] as ArrayValue).Value();
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("rest function requires an array argument", context);
+                    }
 
-                    var list = array.Cast<object>().ToList();
+                    var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
-                        return new List<dynamic>();
+                    {
+                        return new ArrayValue(new List<Value>());
+                    }
 
-                    return list.Skip(1);
+                    return new ArrayValue(list.Skip(1));
                 });
 
             Register("last",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
+                    var array = (args[0] as ArrayValue).Value();
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("last function requires an array argument", context);
+                    }
 
-                    var list = array.Cast<object>().ToList();
+                    var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
+                    {
                         throw new TemplateEvaluationException("Cannot get last element of empty array", context);
+                    }
 
                     return list[list.Count - 1];
                 });
 
             Register("any",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
+                    var array = (args[0] as ArrayValue).Value();
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("any function requires an array argument", context);
+                    }
 
-                    return array.Cast<object>().Any();
+                    return new BooleanValue(array.Any());
                 });
 
             Register("if",
@@ -4318,204 +4497,211 @@ namespace TemplateInterpreter
                     var trueBranch = args[1] as LazyValue;
                     var falseBranch = args[2] as LazyValue;
 
-                    bool conditionResult = Convert.ToBoolean(condition.Evaluate());
+                    var conditionResult = condition.Evaluate();
+                    conditionResult.ExpectType(ValueType.Boolean, context);
 
-                    return conditionResult ? trueBranch.Evaluate() : falseBranch.Evaluate();
+                    return (conditionResult as BooleanValue).Value() ?
+                        trueBranch.Evaluate() :
+                        falseBranch.Evaluate();
                 },
                 isLazilyEvaluated: true);
 
             Register("join",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var delimiter = args[1] as string;
+                    var array = (args[0] as ArrayValue).Value();
+                    var delimiter = (args[1] as StringValue).Value();
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("join function requires an array as first argument", context);
+                    }
                     if (delimiter == null)
+                    {
                         throw new TemplateEvaluationException("join function requires a string as second argument", context);
+                    }
 
-                    return string.Join(delimiter, array.Cast<object>().Select(x => TypeHelper.FormatOutput(x ?? "")));
+                    // TODO: reimplement tostring for all value types and remove FormatOutput
+                    return new StringValue(string.Join(delimiter, array.Select(x => TypeHelper.FormatOutput(x.Unbox() ?? ""))));
                 });
 
             Register("explode",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0] as string;
-                    var delimiter = args[1] as string;
+                    var str = (args[0] as StringValue).Value();
+                    var delimiter = (args[1] as StringValue).Value();
 
                     if (str == null)
+                    {
                         throw new TemplateEvaluationException("explode function requires a string as first argument", context);
+                    }
                     if (delimiter == null)
+                    {
                         throw new TemplateEvaluationException("explode function requires a string as second argument", context);
+                    }
 
-                    return str.Split(new[] { delimiter }, StringSplitOptions.None).ToList();
+                    return new ArrayValue(str.Split(new[] { delimiter }, StringSplitOptions.None).Select(s => new StringValue(s)).ToList());
                 });
 
             Register("map",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(LambdaValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var mapper = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
+                    var array = (args[0] as ArrayValue).Value();
+                    var mapper = (args[1] as LambdaValue).Value();
 
                     if (array == null || mapper == null)
+                    {
                         throw new TemplateEvaluationException("map function requires an array and a function", context);
+                    }
 
-                    return array.Cast<object>()
-                        .Select(item => mapper(context, callSite, new List<dynamic> { item }))
-                        .ToList();
+                    return new ArrayValue(array.Select(item => mapper(context, callSite, new List<Value> { item })).ToList());
                 });
 
             Register("reduce",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>)),
-                    new ParameterDefinition(typeof(object))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(LambdaValue)),
+                    new ParameterDefinition(typeof(Value))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var reducer = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
+                    var array = (args[0] as ArrayValue).Value();
+                    var reducer = (args[1] as LambdaValue).Value();
                     var initialValue = args[2];
 
                     if (array == null || reducer == null)
+                    {
                         throw new TemplateEvaluationException("reduce function requires an array and a function", context);
+                    }
 
-                    return array.Cast<object>()
-                        .Aggregate((object)initialValue, (acc, curr) =>
-                            reducer(context, callSite, new List<dynamic> { acc, curr }));
-                });
-
-            Register("concat",
-                new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
-                },
-                (context, callSite, args) =>
-                {
-                    var first = args[0] as System.Collections.IEnumerable;
-                    var second = args[1] as System.Collections.IEnumerable;
-
-                    if (first == null || second == null)
-                        throw new TemplateEvaluationException("concat function requires both arguments to be arrays", context);
-
-                    // Combine both enumerables into a single list
-                    var result = first.Cast<object>().Concat(second.Cast<object>()).ToList();
-
-                    return result;
+                    return array.Aggregate(initialValue, (acc, curr) =>
+                            reducer(context, callSite, new List<Value> { acc, curr }));
                 });
 
             Register("take",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    int count = Convert.ToInt32(args[1]);
+                    var array = (args[0] as ArrayValue).Value();
+                    int count = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("take function requires an array as first argument", context);
+                    }
 
                     if (count <= 0)
-                        return new List<object>();
+                    {
+                        return new ArrayValue(new List<Value>());
+                    }
 
-                    return array.Cast<object>().Take(count).ToList();
+                    return new ArrayValue(array.Take(count));
                 });
 
             Register("skip",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    int count = Convert.ToInt32(args[1]);
+                    var array = (args[0] as ArrayValue).Value();
+                    int count = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("skip function requires an array as first argument", context);
+                    }
 
-                    return array.Cast<object>().Skip(count).ToList();
+                    return new ArrayValue(array.Skip(count));
                 });
 
             Register("order",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable))
+                    new ParameterDefinition(typeof(ArrayValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
+                    var array = (args[0] as ArrayValue).Value();
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("order function requires an array argument", context);
+                    }
 
-                    return array.Cast<object>().OrderBy(x => x).ToList();
+                    return new ArrayValue(array.OrderBy(x => x.Unbox()));
                 });
 
             Register("order",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(bool))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(BooleanValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var ascending = Convert.ToBoolean(args[1]);
+                    var array = (args[0] as ArrayValue).Value();
+                    var ascending = (args[1] as BooleanValue).Value();
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("order function requires an array as first argument", context);
+                    }
 
-                    var ordered = array.Cast<object>();
-                    return (ascending ? ordered.OrderBy(x => x) : ordered.OrderByDescending(x => x)).ToList();
+                    return new ArrayValue(ascending ? array.OrderBy(x => x.Unbox()) : array.OrderByDescending(x => x.Unbox()));
                 });
 
             Register("order",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(Func<ExecutionContext, AstNode, List<dynamic>, dynamic>))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(LambdaValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var comparer = args[1] as Func<ExecutionContext, AstNode, List<dynamic>, dynamic>;
+                    var array = (args[0] as ArrayValue).Value();
+                    var comparer = (args[1] as LambdaValue).Value();
 
                     if (array == null || comparer == null)
+                    {
                         throw new TemplateEvaluationException("order function requires an array and a comparison function", context);
+                    }
 
-                    return array.Cast<object>()
-                        .OrderBy(x => x, new DynamicComparer(context, callSite, comparer))
-                        .ToList();
+                    return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)));
                 });
 
             Register("group",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(System.Collections.IEnumerable)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(ArrayValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = args[0] as System.Collections.IEnumerable;
-                    var fieldName = args[1] as string;
+                    var array = (args[0] as ArrayValue).Value();
+                    var fieldName = (args[1] as StringValue).Value();
 
                     if (array == null)
+                    {
                         throw new TemplateEvaluationException("group function requires an array as first argument", context);
+                    }
                     if (string.IsNullOrEmpty(fieldName))
+                    {
                         throw new TemplateEvaluationException("group function requires a non-empty string as second argument", context);
+                    }
 
-                    var result = new Dictionary<string, object>();
+                    var result = new Dictionary<string, Value>();
 
                     foreach (var item in array)
                     {
@@ -4524,226 +4710,225 @@ namespace TemplateInterpreter
 
                         // Get the group key from the item
                         string key;
-                        if (item is IDictionary<string, object> dict)
+                        if (item is IDictionary<string, Value> dict)
                         {
                             if (!dict.ContainsKey(fieldName))
+                            {
                                 throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
-                            key = dict[fieldName]?.ToString();
+                            }
+                            else
+                            {
+                                var value = dict[fieldName];
+                                if (value is StringValue str)
+                                {
+                                    key = str.Value();
+                                }
+                                else
+                                {
+                                    throw new TemplateEvaluationException($"Cannot group by value of type '{value.GetType()}'", context);
+                                }
+                            }
                         }
                         else
                         {
-                            var property = item.GetType().GetProperty(fieldName);
-                            if (property == null)
-                                throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
-                            key = property.GetValue(item)?.ToString();
+                            throw new TemplateEvaluationException($"group function requires an array of objects to group", context);
                         }
 
                         if (key == null)
+                        {
                             throw new TemplateEvaluationException($"Field '{fieldName}' must be present", context);
+                        }
 
                         // Add item to the appropriate group
                         if (!result.ContainsKey(key))
                         {
-                            result[key] = new List<object>();
+                            result[key] = new ArrayValue(new List<Value>());
                         }
-                        ((List<object>)result[key]).Add(item);
+                        result[key].Unbox().Add(item);
                     }
 
-                    return result;
+                    return new ObjectValue(result);
                 });
 
             Register("get",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(object)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(ObjectValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var obj = args[0];
-                    var fieldName = args[1] as string;
+                    var obj = (args[0] as ObjectValue).Value();
+                    var fieldName = (args[1] as StringValue).Value();
 
                     if (obj == null)
+                    {
                         throw new TemplateEvaluationException("get function requires an object as first argument", context);
+                    }
                     if (string.IsNullOrEmpty(fieldName))
+                    {
                         throw new TemplateEvaluationException("get function requires a non-empty string as second argument", context);
-
-                    if (obj is IDictionary<string, object> dict)
-                    {
-                        if (!dict.ContainsKey(fieldName))
-                            throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
-
-                        var value = dict[fieldName];
-                        if (TypeHelper.IsConvertibleToDecimal(value))
-                        {
-                            value = (decimal)value;
-                        }
-                        return value;
                     }
-
-                    // Handle regular objects using reflection
-                    var property = obj.GetType().GetProperty(fieldName);
-                    if (property == null)
+                    if (!obj.ContainsKey(fieldName))
+                    {
                         throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
-
-                    var propValue = property.GetValue(obj);
-                    if (TypeHelper.IsConvertibleToDecimal(propValue))
-                    {
-                        propValue = (decimal)propValue;
                     }
-                    return propValue;
+
+                    return obj[fieldName];
                 });
 
             Register("keys",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(object))
+                    new ParameterDefinition(typeof(ObjectValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var obj = args[0];
+                    var obj = (args[0] as ObjectValue).Value();
                     if (obj == null)
+                    {
                         throw new TemplateEvaluationException("keys function requires an object argument", context);
-
-                    if (obj is IDictionary<string, object> dict)
-                    {
-                        return dict.Keys.ToList();
                     }
 
-                    // Handle regular objects using reflection
-                    var properties = obj.GetType().GetProperties();
-                    var propertyNames = new List<string>();
-                    foreach (var prop in properties)
-                    {
-                        propertyNames.Add(prop.Name);
-                    }
-                    return propertyNames;
+                    return new ArrayValue(obj.Keys.Select(key => new StringValue(key)).ToList());
                 });
 
             Register("mod",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number1 = Convert.ToInt32(args[0]);
-                    var number2 = Convert.ToInt32(args[1]);
+                    var number1 = Convert.ToInt32((args[0] as NumberValue).Value());
+                    var number2 = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (number2 == 0)
+                    {
                         throw new TemplateEvaluationException("Cannot perform modulo with zero as divisor", context);
+                    }
 
-                    return new decimal(number1 % number2);
+                    return new NumberValue(number1 % number2);
                 });
 
             Register("floor",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number = Convert.ToDecimal(args[0]);
-                    return Math.Floor(number);
+                    var number = (args[0] as NumberValue).Value();
+                    return new NumberValue(Math.Floor(number));
                 });
 
             Register("ceil",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number = Convert.ToDecimal(args[0]);
-                    return Math.Ceiling(number);
+                    var number = (args[0] as NumberValue).Value();
+                    return new NumberValue(Math.Ceiling(number));
                 });
 
             Register("round",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number = Convert.ToDecimal(args[0]);
-                    return Math.Round(number, 0);
+                    var number = (args[0] as NumberValue).Value();
+                    return new NumberValue(Math.Round(number, 0));
                 });
 
             Register("round",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number = Convert.ToDecimal(args[0]);
-                    var decimals = Convert.ToInt32(args[1]);
+                    var number = (args[0] as NumberValue).Value();
+                    var decimals = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (decimals < 0)
+                    {
                         throw new TemplateEvaluationException("Number of decimal places cannot be negative", context);
+                    }
 
-                    return Math.Round(number, decimals);
+                    return new NumberValue(Math.Round(number, decimals));
                 });
 
             Register("string",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var number = Convert.ToDecimal(args[0]);
-                    return number.ToString();
+                    var number = (args[0] as NumberValue).Value();
+                    return new StringValue(number.ToString());
                 });
 
             Register("string",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(bool))
+                    new ParameterDefinition(typeof(BooleanValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var boolean = Convert.ToBoolean(args[0]);
-                    return boolean.ToString().ToLower(); // returning "true" or "false" in lowercase
+                    var boolean = (args[0] as BooleanValue).Value();
+                    return new StringValue(boolean.ToString().ToLower()); // returning "true" or "false" in lowercase
                 });
 
             Register("number",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0] as string;
+                    var str = (args[0] as StringValue).Value();
 
                     if (string.IsNullOrEmpty(str))
+                    {
                         throw new TemplateEvaluationException("Cannot convert empty or null string to number", context);
+                    }
 
                     if (!decimal.TryParse(str, out decimal result))
+                    {
                         throw new TemplateEvaluationException($"Cannot convert string '{str}' to number", context);
+                    }
 
-                    return result;
+                    return new NumberValue(result);
                 });
 
             Register("numeric",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var str = args[0] as string;
+                    var str = (args[0] as StringValue).Value();
 
                     if (string.IsNullOrEmpty(str))
-                        return false;
+                    {
+                        return new BooleanValue(false);
+                    }
 
-                    return decimal.TryParse(str, out _);
+                    return new BooleanValue(decimal.TryParse(str, out _));
                 });
 
             Register("datetime",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var dateStr = args[0] as string;
+                    var dateStr = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(dateStr))
+                    {
                         throw new TemplateEvaluationException("datetime function requires a non-empty string argument", context);
+                    }
 
                     try
                     {
-                        return DateTime.Parse(dateStr);
+                        return new DateTimeValue(DateTime.Parse(dateStr));
                     }
                     catch (Exception ex)
                     {
@@ -4753,22 +4938,27 @@ namespace TemplateInterpreter
 
             Register("format",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var format = args[1] as string;
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var format = (args[1] as StringValue).Value();
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("format function requires a valid DateTime as first argument", context);
+                    }
+
                     if (string.IsNullOrEmpty(format))
+                    {
                         throw new TemplateEvaluationException("format function requires a non-empty format string as second argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.ToString(format);
+                        return new StringValue(date.Value.ToString(format));
                     }
                     catch (Exception ex)
                     {
@@ -4778,20 +4968,22 @@ namespace TemplateInterpreter
 
             Register("addYears",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var years = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var years = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addYears function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddYears(years);
+                        return new DateTimeValue(date.Value.AddYears(years));
                     }
                     catch (Exception ex)
                     {
@@ -4801,20 +4993,22 @@ namespace TemplateInterpreter
 
             Register("addMonths",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var months = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var months = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addMonths function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddMonths(months);
+                        return new DateTimeValue(date.Value.AddMonths(months));
                     }
                     catch (Exception ex)
                     {
@@ -4824,20 +5018,22 @@ namespace TemplateInterpreter
 
             Register("addDays",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var days = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var days = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addDays function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddDays(days);
+                        return new DateTimeValue(date.Value.AddDays(days));
                     }
                     catch (Exception ex)
                     {
@@ -4847,20 +5043,22 @@ namespace TemplateInterpreter
 
             Register("addHours",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var hours = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var hours = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addHours function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddHours(hours);
+                        return new DateTimeValue(date.Value.AddHours(hours));
                     }
                     catch (Exception ex)
                     {
@@ -4870,20 +5068,22 @@ namespace TemplateInterpreter
 
             Register("addMinutes",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var minutes = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var minutes = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addMinutes function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddMinutes(minutes);
+                        return new DateTimeValue(date.Value.AddMinutes(minutes));
                     }
                     catch (Exception ex)
                     {
@@ -4893,20 +5093,22 @@ namespace TemplateInterpreter
 
             Register("addSeconds",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(DateTime)),
-                    new ParameterDefinition(typeof(decimal))
+                    new ParameterDefinition(typeof(DateTimeValue)),
+                    new ParameterDefinition(typeof(NumberValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var date = args[0] as DateTime?;
-                    var seconds = Convert.ToInt32(args[1]);
+                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
+                    var seconds = Convert.ToInt32((args[1] as NumberValue).Value());
 
                     if (!date.HasValue)
+                    {
                         throw new TemplateEvaluationException("addSeconds function requires a valid DateTime as first argument", context);
+                    }
 
                     try
                     {
-                        return date.Value.AddSeconds(seconds);
+                        return new DateTimeValue(date.Value.AddSeconds(seconds));
                     }
                     catch (Exception ex)
                     {
@@ -4918,52 +5120,54 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition>(),
                 (context, callSite, args) =>
                 {
-                    return DateTime.Now;
+                    return new DateTimeValue(DateTime.Now);
                 });
 
             Register("utcNow",
                 new List<ParameterDefinition>(),
                 (context, callSite, args) =>
                 {
-                    return DateTime.UtcNow;
+                    return new DateTimeValue(DateTime.UtcNow);
                 });
 
             Register("uri",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var uriString = args[0] as string;
+                    var uriString = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(uriString))
+                    {
                         throw new TemplateEvaluationException("uri function requires a non-empty string argument", context);
+                    }
 
                     try
                     {
                         var uri = new Uri(uriString);
-                        var dict = new Dictionary<string, object>();
-                        dict["AbsolutePath"] = uri.AbsolutePath;
-                        dict["AbsoluteUri"] = uri.AbsoluteUri;
-                        dict["DnsSafeHost"] = uri.DnsSafeHost;
-                        dict["Fragment"] = uri.Fragment;
-                        dict["Host"] = uri.Host;
-                        dict["HostNameType"] = uri.HostNameType;
-                        dict["IdnHost"] = uri.IdnHost;
-                        dict["IsAbsoluteUri"] = uri.IsAbsoluteUri;
-                        dict["IsDefaultPort"] = uri.IsDefaultPort;
-                        dict["IsFile"] = uri.IsFile;
-                        dict["IsLoopback"] = uri.IsLoopback;
-                        dict["IsUnc"] = uri.IsUnc;
-                        dict["LocalPath"] = uri.LocalPath;
-                        dict["OriginalString"] = uri.OriginalString;
-                        dict["PathAndQuery"] = uri.PathAndQuery;
-                        dict["Port"] = uri.Port;
-                        dict["Query"] = uri.Query;
-                        dict["Scheme"] = uri.Scheme;
-                        dict["Segments"] = uri.Segments;
-                        dict["UserEscaped"] = uri.UserEscaped;
-                        dict["UserInfo"] = uri.UserInfo;
-                        return dict;
+                        var dict = new Dictionary<string, Value>();
+                        dict["AbsolutePath"] = new StringValue(uri.AbsolutePath);
+                        dict["AbsoluteUri"] = new StringValue(uri.AbsoluteUri);
+                        dict["DnsSafeHost"] = new StringValue(uri.DnsSafeHost);
+                        dict["Fragment"] = new StringValue(uri.Fragment);
+                        dict["Host"] = new StringValue(uri.Host);
+                        dict["HostNameType"] = new StringValue(uri.HostNameType.ToString());
+                        dict["IdnHost"] = new StringValue(uri.IdnHost);
+                        dict["IsAbsoluteUri"] = new BooleanValue(uri.IsAbsoluteUri);
+                        dict["IsDefaultPort"] = new BooleanValue(uri.IsDefaultPort);
+                        dict["IsFile"] = new BooleanValue(uri.IsFile);
+                        dict["IsLoopback"] = new BooleanValue(uri.IsLoopback);
+                        dict["IsUnc"] = new BooleanValue(uri.IsUnc);
+                        dict["LocalPath"] = new StringValue(uri.LocalPath);
+                        dict["OriginalString"] = new StringValue(uri.OriginalString);
+                        dict["PathAndQuery"] = new StringValue(uri.PathAndQuery);
+                        dict["Port"] = new NumberValue(uri.Port);
+                        dict["Query"] = new StringValue(uri.Query);
+                        dict["Scheme"] = new StringValue(uri.Scheme);
+                        dict["Segments"] = new ArrayValue(uri.Segments.Select(s => new StringValue(s)).ToList());
+                        dict["UserEscaped"] = new BooleanValue(uri.UserEscaped);
+                        dict["UserInfo"] = new StringValue(uri.UserInfo);
+                        return new ObjectValue(dict);
                     }
                     catch (Exception ex)
                     {
@@ -4973,15 +5177,15 @@ namespace TemplateInterpreter
 
             Register("htmlEncode",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var html = args[0] as string;
+                    var html = (args[0] as StringValue).Value();
 
                     try
                     {
-                        return WebUtility.HtmlEncode(html);
+                        return new StringValue(WebUtility.HtmlEncode(html));
                     }
                     catch (Exception ex)
                     {
@@ -4991,15 +5195,15 @@ namespace TemplateInterpreter
 
             Register("htmlDecode",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var html = args[0] as string;
+                    var html = (args[0] as StringValue).Value();
 
                     try
                     {
-                        return WebUtility.HtmlDecode(html);
+                        return new StringValue(WebUtility.HtmlDecode(html));
                     }
                     catch (Exception ex)
                     {
@@ -5009,15 +5213,15 @@ namespace TemplateInterpreter
 
             Register("urlEncode",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var url = args[0] as string;
+                    var url = (args[0] as StringValue).Value();
 
                     try
                     {
-                        return WebUtility.UrlEncode(url);
+                        return new StringValue(WebUtility.UrlEncode(url));
                     }
                     catch (Exception ex)
                     {
@@ -5027,15 +5231,15 @@ namespace TemplateInterpreter
 
             Register("urlDecode",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var url = args[0] as string;
+                    var url = (args[0] as StringValue).Value();
 
                     try
                     {
-                        return WebUtility.UrlDecode(url);
+                        return new StringValue(WebUtility.UrlDecode(url));
                     }
                     catch (Exception ex)
                     {
@@ -5045,17 +5249,24 @@ namespace TemplateInterpreter
 
             Register("fromJson",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(string))
+                    new ParameterDefinition(typeof(StringValue))
                 },
                 (context, callSite, args) =>
                 {
-                    var jsonString = args[0] as string;
+                    var jsonString = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(jsonString))
+                    {
                         throw new TemplateEvaluationException("fromJson function requires a non-empty string argument", context);
+                    }
 
                     try
                     {
-                        return ParseToObject(jsonString);
+                        var parsed = ParseToObject(jsonString);
+                        if (parsed == null)
+                        {
+                            throw new TemplateEvaluationException($"Failed to deserialize object to JSON: Object must have a value", context);
+                        }
+                        return parsed;
                     }
                     catch (Exception ex)
                     {
@@ -5065,8 +5276,8 @@ namespace TemplateInterpreter
 
             Register("toJson",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(object)),
-                    new ParameterDefinition(typeof(bool), true, false)
+                    new ParameterDefinition(typeof(ObjectValue)),
+                    new ParameterDefinition(typeof(BooleanValue), true, new BooleanValue(false))
                 },
                 (context, callSite, args) =>
                 {
@@ -5074,7 +5285,9 @@ namespace TemplateInterpreter
                     var formatted = Convert.ToBoolean(args[1]);
 
                     if (obj == null)
-                        return "null";
+                    {
+                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: Object must have a value", context);
+                    }
 
                     try
                     {
@@ -5084,10 +5297,10 @@ namespace TemplateInterpreter
 
                         if (formatted)
                         {
-                            return FormatJson(json);
+                            return new StringValue(FormatJson(json));
                         }
 
-                        return json;
+                        return new StringValue(json);
                     }
                     catch (Exception ex)
                     {
@@ -5096,21 +5309,24 @@ namespace TemplateInterpreter
                 });
         }
 
-        private dynamic ParseToObject(string jsonString)
+        private Value ParseToObject(string jsonString)
         {
             var serializer = new JavaScriptSerializer();
             var deserializedObject = serializer.Deserialize<object>(jsonString);
-            return ConvertToDictionary(deserializedObject);
+            return ConvertToDictionary(deserializedObject) as Value;
         }
 
-        private dynamic ConvertToDictionary(object obj)
+        private Value ConvertToDictionary(object obj)
         {
-            if (obj == null) return null;
+            if (obj == null)
+            {
+                return null;
+            }
 
             // Handle dictionary (objects in JSON)
             if (obj is Dictionary<string, object> dict)
             {
-                var newDict = new Dictionary<string, object>();
+                var newDict = new Dictionary<string, Value>();
                 foreach (var kvp in dict)
                 {
                     var convertedValue = ConvertToDictionary(kvp.Value);
@@ -5119,40 +5335,55 @@ namespace TemplateInterpreter
                         newDict[kvp.Key] = convertedValue;
                     }
                 }
-                return newDict;
+                return new ObjectValue(newDict);
             }
 
             // Handle array
             if (obj is System.Collections.ArrayList arrayList)
             {
-                return arrayList.Cast<object>()
+                return new ArrayValue(arrayList.Cast<object>()
                                .Select(item => ConvertToDictionary(item))
-                               .Where(item => item != null)  // Filter out null values
-                               .ToList();
+                               .Where(item => item != null)
+                               .ToList());  // Filter out null values
             }
 
-            if (obj is Object[] array)
+            if (obj is object[] array)
             {
-                return array.Cast<object>()
+                return new ArrayValue(array.Cast<object>()
                                .Select(item => ConvertToDictionary(item))
-                               .Where(item => item != null)  // Filter out null values
-                               .ToList();
+                               .Where(item => item != null)
+                               .ToList());  // Filter out null values
             }
 
             // Handle numbers - convert to decimal where possible
             if (TypeHelper.IsConvertibleToDecimal(obj))
             {
-                return Convert.ToDecimal(obj);
+                return new NumberValue(Convert.ToDecimal(obj));
+            }
+
+            if (obj is string str)
+            {
+                return new StringValue(str);
+            }
+
+            if (obj is bool boolean)
+            {
+                return new BooleanValue(boolean);
+            }
+
+            if (obj is DateTime dateTime)
+            {
+                return new DateTimeValue(dateTime);
             }
 
             // Return other primitives as-is (string, bool)
-            return obj;
+            throw new Exception($"Unable to convert value to known datatype: {obj}");
         }
 
         private object ConvertToSerializable(object obj)
         {
             if (obj == null) return null;
-            
+
             if (obj is IDictionary<string, dynamic>)
             {
                 var dict = new Dictionary<string, object>();
@@ -5258,7 +5489,7 @@ namespace TemplateInterpreter
         public void Register(
             string name,
             List<ParameterDefinition> parameters,
-            Func<ExecutionContext, AstNode, List<dynamic>, dynamic> implementation,
+            Func<ExecutionContext, AstNode, List<Value>, Value> implementation,
             bool isLazilyEvaluated = false)
         {
             var definition = new FunctionDefinition(name, parameters, implementation, isLazilyEvaluated);
@@ -5306,9 +5537,9 @@ namespace TemplateInterpreter
 
         public bool TryGetFunction(
             string name,
-            List<dynamic> arguments,
+            List<Value> arguments,
             out FunctionDefinition matchingFunction,
-            out List<dynamic> effectiveArguments,
+            out List<Value> effectiveArguments,
             ExecutionContext context)
         {
             matchingFunction = null;
@@ -5358,12 +5589,12 @@ namespace TemplateInterpreter
             return true;
         }
 
-        private List<dynamic> CreateEffectiveArguments(
+        private List<Value> CreateEffectiveArguments(
             List<ParameterDefinition> parameters,
-            List<dynamic> providedArgs,
+            List<Value> providedArgs,
             ExecutionContext context)
         {
-            var effectiveArgs = new List<dynamic>();
+            var effectiveArgs = new List<Value>();
 
             for (int i = 0; i < parameters.Count; i++)
             {
@@ -5385,7 +5616,7 @@ namespace TemplateInterpreter
             return effectiveArgs;
         }
 
-        private int ScoreTypeMatch(List<ParameterDefinition> parameters, List<dynamic> arguments)
+        private int ScoreTypeMatch(List<ParameterDefinition> parameters, List<Value> arguments)
         {
             if (arguments.Count < parameters.Count(p => !p.IsOptional) ||
                 arguments.Count > parameters.Count)
@@ -5444,7 +5675,7 @@ namespace TemplateInterpreter
             return totalScore;
         }
 
-        public void ValidateArguments(FunctionDefinition function, List<dynamic> arguments, ExecutionContext context)
+        public void ValidateArguments(FunctionDefinition function, List<Value> arguments, ExecutionContext context)
         {
             if (arguments.Count != function.Parameters.Count)
             {
@@ -5477,12 +5708,12 @@ namespace TemplateInterpreter
                 var argumentType = argument.GetType();
 
                 // Special handling for IEnumerable parameter type
-                if (parameter.Type == typeof(System.Collections.IEnumerable))
+                if (parameter.Type == typeof(ArrayValue))
                 {
-                    if (!(argument is System.Collections.IEnumerable))
+                    if (!(argument is ArrayValue))
                     {
                         throw new TemplateEvaluationException(
-                            $"Argument {i + 1} of function '{function.Name}' must be an array or collection",
+                            $"Argument {i + 1} of function '{function.Name}' must be an array",
                             context);
                     }
                     continue;
@@ -5501,6 +5732,34 @@ namespace TemplateInterpreter
 
     public class TypeHelper
     {
+        public static bool UnboxBoolean(Value value, ExecutionContext context)
+        {
+            if (value is BooleanValue booleanValue)
+            {
+                return booleanValue.Value();
+            }
+            else
+            {
+                throw new TemplateEvaluationException(
+                    $"Expected value of type boolean but found {value.GetType()}",
+                    context);
+            }
+        }
+
+        public static decimal UnboxNumber(Value value, ExecutionContext context)
+        {
+            if (value is NumberValue booleanValue)
+            {
+                return booleanValue.Value();
+            }
+            else
+            {
+                throw new TemplateEvaluationException(
+                    $"Expected value of type Number but found {value.GetType()}",
+                    context);
+            }
+        }
+
         public static string FormatOutput(dynamic evaluated, bool serializing = false)
         {
             if (TypeHelper.IsConvertibleToDecimal(evaluated))
@@ -5515,10 +5774,6 @@ namespace TemplateInterpreter
             {
                 return evaluated.ToString("o"); // ISO 8601 format
             }
-            else if (evaluated is Uri)
-            {
-                return evaluated.ToString();
-            }
             else if ((evaluated is string || evaluated is char) && serializing)
             {
                 return $"\"{evaluated.ToString()}\"";
@@ -5527,21 +5782,13 @@ namespace TemplateInterpreter
             {
                 return evaluated.ToString();
             }
-            else if (
-                evaluated is List<dynamic> ||
-                evaluated is List<decimal> ||
-                evaluated is List<bool> ||
-                evaluated is List<string> ||
-                evaluated is List<char> ||
-                evaluated is List<DateTime> ||
-                evaluated is List<Uri>)
-            {
+            else if (evaluated is List<Value>) {
                 return FormatArrayOutput(evaluated);
             }
-            else if (evaluated is IDictionary<string, object> dict)
+            else if (evaluated is IDictionary<string, Value> dict)
             {
                 return string.Concat("{",
-                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key], true)))), "}");
+                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key].Unbox(), true)))), "}");
             }
             else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
@@ -5553,9 +5800,9 @@ namespace TemplateInterpreter
             }
         }
 
-        public static string FormatArrayOutput<T>(List<T> array)
+        public static string FormatArrayOutput(List<Value> array)
         {
-            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item, true))), "]");
+            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item.Unbox(), true))), "]");
         }
 
         public static string JsonSerialize(dynamic evaluated)
@@ -5636,22 +5883,22 @@ namespace TemplateInterpreter
         }
     }
 
-    public class DynamicComparer : IComparer<object>
+    public class ValueComparer : IComparer<Value>
     {
-        private readonly Func<ExecutionContext, AstNode, List<dynamic>, dynamic> _comparer;
+        private readonly Func<ExecutionContext, AstNode, List<Value>, Value> _comparer;
         private readonly ExecutionContext _context;
         private readonly AstNode _callSite;
 
-        public DynamicComparer(ExecutionContext context, AstNode callSite, Func<ExecutionContext, AstNode, List<dynamic>, dynamic> comparer)
+        public ValueComparer(ExecutionContext context, AstNode callSite, Func<ExecutionContext, AstNode, List<Value>, Value> comparer)
         {
             _comparer = comparer;
             _context = context;
             _callSite = callSite;
         }
 
-        public int Compare(object x, object y)
+        public int Compare(Value x, Value y)
         {
-            var result = Convert.ToDecimal(_comparer(_context, _callSite, new List<dynamic> { x, y }));
+            var result = Convert.ToDecimal(_comparer(_context, _callSite, new List<Value> { x.Unbox(), y.Unbox() }));
             return Math.Sign(result);
         }
     }
@@ -5687,7 +5934,7 @@ namespace TemplateInterpreter
 
     public interface IDataverseService
     {
-        List<IDictionary<string, object>> RetrieveMultiple(string fetchXml);
+        ArrayValue RetrieveMultiple(string fetchXml);
     }
 
     public class DataverseService : IDataverseService
@@ -5699,20 +5946,20 @@ namespace TemplateInterpreter
             _organizationService = organizationService ?? throw new ArgumentNullException(nameof(organizationService));
         }
 
-        public List<IDictionary<string, object>> RetrieveMultiple(string fetchXml)
+        public ArrayValue RetrieveMultiple(string fetchXml)
         {
             var fetch = new FetchExpression(fetchXml);
             var results = _organizationService.RetrieveMultiple(fetch);
             return ConvertToObjects(results);
         }
 
-        private List<IDictionary<string, object>> ConvertToObjects(EntityCollection entityCollection)
+        private ArrayValue ConvertToObjects(EntityCollection entityCollection)
         {
-            var dicts = new List<IDictionary<string, object>>();
+            var dicts = new List<ObjectValue>();
 
             foreach (var entity in entityCollection.Entities)
             {
-                var dict = new Dictionary<string, object>();
+                var dict = new Dictionary<string, Value>();
 
                 foreach (var attribute in entity.Attributes)
                 {
@@ -5728,32 +5975,49 @@ namespace TemplateInterpreter
                     }
                 }
 
-                dicts.Add(dict);
+                dicts.Add(new ObjectValue(dict));
             }
 
-            return dicts;
+            return new ArrayValue(dicts);
         }
 
-        private object ConvertAttributeValue(object attributeValue)
+        private Value ConvertAttributeValue(object attributeValue)
         {
             if (attributeValue == null) return null;
 
             switch (attributeValue)
             {
                 case EntityReference entityRef:
-                    return entityRef.Id.ToString();
+                    return new StringValue(entityRef.Id.ToString());
+
+                case Guid guid:
+                    return new StringValue(guid.ToString());
 
                 case OptionSetValue optionSet:
-                    return optionSet.Value;
+                    return new NumberValue(Convert.ToDecimal(optionSet.Value));
 
                 case Money money:
-                    return money.Value;
+                    return new NumberValue(money.Value);
 
                 case AliasedValue aliased:
                     return ConvertAttributeValue(aliased.Value);
 
+                case string str:
+                    return new StringValue(str);
+
+                case bool boolean:
+                    return new BooleanValue(boolean);
+
+                case DateTime dateTime:
+                    return new DateTimeValue(dateTime);
+
                 default:
-                    return attributeValue;
+                    if (TypeHelper.IsConvertibleToDecimal(attributeValue))
+                    {
+                        return new NumberValue(Convert.ToDecimal(attributeValue));
+                    }
+
+                    throw new Exception($"Unable to convert value to known datatype: {attributeValue}");
             }
         }
     }
