@@ -2,7 +2,6 @@
 using Microsoft.Xrm.Sdk.Query;
 using System;
 using System.Collections.Generic;
-using System.Dynamic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -51,6 +50,45 @@ namespace TemplateInterpreter
         public override string ToString()
         {
             return _value.ToString();
+        }
+    }
+
+    public static class ValueFactory
+    {
+        public static Value Create(dynamic value)
+        {
+            if (value is IDictionary<string, dynamic> dynamicObj)
+            {
+                IDictionary<string, Value> valueObj = new Dictionary<string, Value>();
+                foreach (var key in dynamicObj.Keys)
+                {
+                    valueObj[key] = ValueFactory.Create(dynamicObj[key]);
+                }
+                return new ObjectValue(valueObj);
+            }
+            else if (value is IEnumerable<dynamic> dynamicArr) {
+                return new ArrayValue(dynamicArr.Select(item => ValueFactory.Create(item)) as IEnumerable<Value>);
+            }
+            else if (value is string || value is char)
+            {
+                return new StringValue(value.ToString());
+            }
+            else if (TypeHelper.IsConvertibleToDecimal(value))
+            {
+                return new NumberValue(Convert.ToDecimal(value));
+            }
+            else if (value is bool)
+            {
+                return new BooleanValue(value);
+            }
+            else if (value is DateTime)
+            {
+                return new DateTimeValue(value);
+            }
+            else
+            {
+                throw new InitializationException("Unable to resolve initial data object as a dynamically typed language object. Encountered an unxpected type.");
+            }
         }
     }
 
@@ -212,7 +250,12 @@ namespace TemplateInterpreter
                 ast = ProcessIncludes(ast);
             }
 
-            return ast.Evaluate(new ExecutionContext(data, _functionRegistry, null, _maxRecursionDepth, ast));
+            return ast.Evaluate(new ExecutionContext(
+                data != null ? ValueFactory.Create(data) as ObjectValue : new ObjectValue(new Dictionary<string, Value>()),
+                _functionRegistry, 
+                null, 
+                _maxRecursionDepth, 
+                ast));
         }
 
         private AstNode ProcessIncludes(AstNode node, HashSet<string> descendantIncludes = null)
@@ -293,7 +336,7 @@ namespace TemplateInterpreter
         public AstNode CallSite { get { return _callSite; } }
 
         public ExecutionContext(
-            dynamic data,
+            ObjectValue data,
             FunctionRegistry functionRegistry,
             ExecutionContext parentContext,
             int maxDepth,
@@ -357,7 +400,7 @@ namespace TemplateInterpreter
             return _functionRegistry;
         }
 
-        public dynamic GetData()
+        public ObjectValue GetData()
         {
             return _data;
         }
@@ -503,7 +546,7 @@ namespace TemplateInterpreter
             List<string> parameterNames,
             List<dynamic> parameterValues,
             AstNode node)
-            : base((object)parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth, node)
+            : base(parentContext.GetData(), parentContext.GetFunctionRegistry(), parentContext, parentContext.MaxDepth, node)
         {
             _parameters = new Dictionary<string, dynamic>();
             _variables = new Dictionary<string, dynamic>();

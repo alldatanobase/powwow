@@ -1924,7 +1924,7 @@ Line 3
         public void ToJson_BooleanValue_ReturnsCorrectJson()
         {
             var template = "{{ toJson(true) }}";
-            var result = _interpreter.Interpret(template, null);
+            var result = _interpreter.Interpret(template, _emptyData);
             Assert.That(result, Is.EqualTo("true"));
         }
 
