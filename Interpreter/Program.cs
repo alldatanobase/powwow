@@ -20,6 +20,134 @@ namespace TemplateInterpreter
         }
     }
 
+    public enum ValueType
+    {
+        Object,
+        Array,
+        String,
+        Number,
+        Boolean,
+        DateTime,
+        Lambda,
+        Lazy
+    }
+
+    public abstract class Value
+    {
+        protected dynamic _value;
+        private readonly ValueType _type;
+
+        public Value(dynamic value, ValueType type)
+        {
+            this._value = value;
+            this._type = type;
+        }
+
+        public ValueType TypeOf()
+        {
+            return _type;
+        }
+
+        public override string ToString()
+        {
+            return _value.ToString();
+        }
+    }
+
+    public class StringValue : Value
+    {
+        public StringValue(string value) : base(value, ValueType.String) { }
+
+        public string Value()
+        {
+            return _value;
+        }
+    }
+
+    public class NumberValue : Value
+    {
+        public NumberValue(decimal value) : base(value, ValueType.Number) { }
+
+        public decimal Value()
+        {
+            return _value;
+        }
+    }
+
+    public class BooleanValue : Value
+    {
+        public BooleanValue(bool value) : base(value, ValueType.Boolean) { }
+
+        public bool Value()
+        {
+            return _value;
+        }
+    }
+
+    public class DateTimeValue : Value
+    {
+        public DateTimeValue(DateTime value) : base(value, ValueType.DateTime) { }
+
+        public DateTime Value()
+        {
+            return _value;
+        }
+    }
+
+    public class ObjectValue : Value
+    {
+        public ObjectValue(IDictionary<string, Value> value) : base(value, ValueType.Object) { }
+        
+        public IDictionary<string, Value> Value()
+        {
+            return _value;
+        }
+    }
+
+    public class ArrayValue : Value
+    {
+        public ArrayValue(IEnumerable<Value> value) : base(value, ValueType.Array) { }
+
+        public IEnumerable<Value> Value()
+        {
+            return _value;
+        }
+    }
+
+    public class LambdaValue : Value
+    {
+        public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value) : base(value, ValueType.Lambda) { }
+
+        public Func<ExecutionContext, AstNode, List<Value>, Value> Value()
+        {
+            return _value;
+        }
+    }
+
+    public class LazyValue : Value
+    {
+        private readonly AstNode _expression;
+        private readonly ExecutionContext _capturedContext;
+        private bool _isEvaluated;
+
+        public LazyValue(AstNode expression, ExecutionContext context) : base(expression, ValueType.Lazy)
+        {
+            _expression = expression;
+            _capturedContext = context;
+            _isEvaluated = false;
+        }
+
+        public dynamic Evaluate()
+        {
+            if (!_isEvaluated)
+            {
+                _value = _expression.Evaluate(_capturedContext);
+                _isEvaluated = true;
+            }
+            return _value;
+        }
+    }
+
     public class Interpreter
     {
         private readonly Lexer _lexer;
@@ -1874,31 +2002,6 @@ namespace TemplateInterpreter
         {
             var argsStr = string.Join(", ", _arguments.Select(arg => arg.ToString()));
             return $"InvocationNode(callable={_callable.ToString()}, arguments=[{argsStr}])";
-        }
-    }
-
-    public class LazyValue
-    {
-        private readonly AstNode _expression;
-        private readonly ExecutionContext _capturedContext;
-        private bool _isEvaluated;
-        private dynamic _value;
-
-        public LazyValue(AstNode expression, ExecutionContext context)
-        {
-            _expression = expression;
-            _capturedContext = context;
-            _isEvaluated = false;
-        }
-
-        public dynamic Evaluate()
-        {
-            if (!_isEvaluated)
-            {
-                _value = _expression.Evaluate(_capturedContext);
-                _isEvaluated = true;
-            }
-            return _value;
         }
     }
 
