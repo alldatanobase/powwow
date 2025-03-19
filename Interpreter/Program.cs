@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -4643,7 +4644,7 @@ namespace TemplateInterpreter
                         throw new TemplateEvaluationException("order function requires an array argument", context);
                     }
 
-                    return new ArrayValue(array.OrderBy(x => x.Unbox()));
+                    return new ArrayValue(array.OrderBy(x => x.Unbox()).ToList());
                 });
 
             Register("order",
@@ -4661,7 +4662,9 @@ namespace TemplateInterpreter
                         throw new TemplateEvaluationException("order function requires an array as first argument", context);
                     }
 
-                    return new ArrayValue(ascending ? array.OrderBy(x => x.Unbox()) : array.OrderByDescending(x => x.Unbox()));
+                    return new ArrayValue(ascending ? 
+                        array.OrderBy(x => x.Unbox()).ToList() : 
+                        array.OrderByDescending(x => x.Unbox()).ToList());
                 });
 
             Register("order",
@@ -4679,7 +4682,7 @@ namespace TemplateInterpreter
                         throw new TemplateEvaluationException("order function requires an array and a comparison function", context);
                     }
 
-                    return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)));
+                    return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)).ToList());
                 });
 
             Register("group",
@@ -4710,7 +4713,7 @@ namespace TemplateInterpreter
 
                         // Get the group key from the item
                         string key;
-                        if (item is IDictionary<string, Value> dict)
+                        if (item.Unbox() is IDictionary<string, Value> dict)
                         {
                             if (!dict.ContainsKey(fieldName))
                             {
@@ -5276,24 +5279,24 @@ namespace TemplateInterpreter
 
             Register("toJson",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(ObjectValue)),
+                    new ParameterDefinition(typeof(Value)),
                     new ParameterDefinition(typeof(BooleanValue), true, new BooleanValue(false))
                 },
                 (context, callSite, args) =>
                 {
                     var obj = args[0];
-                    var formatted = Convert.ToBoolean(args[1]);
+                    var formatted = (args[1] as BooleanValue).Value();
 
                     if (obj == null)
                     {
-                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: Object must have a value", context);
+                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: Must have a value to serialize", context);
                     }
 
                     try
                     {
                         // Convert the object to a format suitable for serialization
-                        var serializable = ConvertToSerializable(obj);
-                        var json = TypeHelper.JsonSerialize(serializable);
+                        //var serializable = ConvertToSerializable(obj);
+                        var json = TypeHelper.JsonSerialize(obj);
 
                         if (formatted)
                         {
@@ -5782,7 +5785,7 @@ namespace TemplateInterpreter
             {
                 return evaluated.ToString();
             }
-            else if (evaluated is List<Value>) {
+            else if (evaluated is IEnumerable<Value>) {
                 return FormatArrayOutput(evaluated);
             }
             else if (evaluated is IDictionary<string, Value> dict)
@@ -5800,60 +5803,51 @@ namespace TemplateInterpreter
             }
         }
 
-        public static string FormatArrayOutput(List<Value> array)
+        public static string FormatArrayOutput(IEnumerable<Value> array)
         {
             return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item.Unbox(), true))), "]");
         }
 
-        public static string JsonSerialize(dynamic evaluated)
+        public static string JsonSerialize(Value value)
         {
-            if (TypeHelper.IsConvertibleToDecimal(evaluated))
+            if (value is NumberValue numberValue)
             {
-                return evaluated.ToString();
+                return numberValue.Value().ToString();
             }
-            else if (evaluated is bool)
+            else if (value is DateTimeValue dateTimeValue)
             {
-                return evaluated ? "true" : "false";
+                return $"\"{dateTimeValue.Value().ToString("o")}\""; // ISO 8601 format
             }
-            if (evaluated is DateTime)
+            else if (value is BooleanValue booleanValue)
             {
-                var serializer = new JavaScriptSerializer();
-                return serializer.Serialize(evaluated.ToString("o")); // ISO 8601 format
+                return booleanValue.Value() ? "true" : "false";
             }
-            else if (evaluated is string || evaluated is char || evaluated is Uri)
-            {
-                var serializer = new JavaScriptSerializer();
-                return serializer.Serialize(evaluated.ToString());
-            }
-            else if (
-                evaluated is List<dynamic> ||
-                evaluated is List<decimal> ||
-                evaluated is List<bool> ||
-                evaluated is List<string> ||
-                evaluated is List<char> ||
-                evaluated is List<DateTime> ||
-                evaluated is List<Uri>)
-            {
-                return JsonSerializeArray(evaluated);
-            }
-            else if (evaluated is IDictionary<string, object> dict)
-            {
-                return string.Concat("{",
-                    string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
-            }
-            else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
+            else if (value is LambdaValue)
             {
                 return "\"lambda()\"";
             }
+            else if (value is LazyValue)
+            {
+                return "\"lazy()\"";
+            }
+            else if (value is ObjectValue obj)
+            {
+                var dict = obj.Value();
+                return string.Concat("{",
+                    string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
+            }
+            else if (value is ArrayValue arrayValue)
+            {
+                return string.Concat("[", string.Join(",", arrayValue.Value().Select(item => JsonSerialize(item))), "]");
+            }
+            else if (value is StringValue stringValue)
+            {
+                return new JavaScriptSerializer().Serialize(stringValue.Value());
+            }
             else
             {
-                return $"\"{evaluated.ToString()}\"";
+                return $"\"{value.Unbox().ToString()}\"";
             }
-        }
-
-        public static string JsonSerializeArray<T>(List<T> array)
-        {
-            return string.Concat("[", string.Join(",", array.Select(item => JsonSerialize(item))), "]");
         }
 
         public static bool IsConvertibleToDecimal(dynamic value)
@@ -5898,8 +5892,17 @@ namespace TemplateInterpreter
 
         public int Compare(Value x, Value y)
         {
-            var result = Convert.ToDecimal(_comparer(_context, _callSite, new List<Value> { x.Unbox(), y.Unbox() }));
-            return Math.Sign(result);
+            var comparison = _comparer(_context, _callSite, new List<Value> { x, y });
+            if (comparison is NumberValue diff)
+            {
+                return Math.Sign(diff.Value());
+            }
+            else
+            {
+                throw new TemplateEvaluationException(
+                    $"Expected value of type number but found {comparison.GetType()}",
+                    _context);
+            }
         }
     }
 

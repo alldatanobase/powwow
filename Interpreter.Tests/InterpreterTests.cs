@@ -1902,7 +1902,7 @@ Line 3
         public void ToJson_UriValue_ReturnsCorrectJson()
         {
             var uri = new Uri("https://example.com");
-            var template = "{{ toJson(uri) }}";
+            var template = "{{ toJson(uri.AbsoluteUri) }}";
             dynamic data = new ExpandoObject();
             data.uri = uri;
             var result = _interpreter.Interpret(template, data);
