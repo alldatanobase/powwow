@@ -1353,7 +1353,7 @@ namespace TemplateInterpreter
                     continue;
                 }
 
-                // Check for function names before other identifiers
+                // Match function calls before other operations
                 if (char.IsLetter(_input[_position]))
                 {
                     var savedPosition = SavePosition();
@@ -1403,6 +1403,7 @@ namespace TemplateInterpreter
                 {
                     AddToken(TokenType.For, "for");
                     UpdatePositionAndTracking(3);
+                    continue;
                 }
                 else if (TryMatch("include"))
                 {
@@ -1414,118 +1415,142 @@ namespace TemplateInterpreter
                 {
                     AddToken(TokenType.If, "if");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("elseif"))
                 {
                     AddToken(TokenType.ElseIf, "elseif");
                     UpdatePositionAndTracking(6);
+                    continue;
                 }
                 else if (TryMatch("else"))
                 {
                     AddToken(TokenType.Else, "else");
                     UpdatePositionAndTracking(4);
+                    continue;
                 }
                 else if (TryMatch("/for"))
                 {
                     AddToken(TokenType.EndFor, "/for");
                     UpdatePositionAndTracking(4);
+                    continue;
                 }
                 else if (TryMatch("/if"))
                 {
                     AddToken(TokenType.EndIf, "/if");
                     UpdatePositionAndTracking(3);
+                    continue;
                 }
                 else if (TryMatch(">="))
                 {
                     AddToken(TokenType.GreaterThanEqual, ">=");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("<="))
                 {
                     AddToken(TokenType.LessThanEqual, "<=");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("=="))
                 {
                     AddToken(TokenType.Equal, "==");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("="))
                 {
                     AddToken(TokenType.Assignment, "=");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("!="))
                 {
                     AddToken(TokenType.NotEqual, "!=");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("&&"))
                 {
                     AddToken(TokenType.And, "&&");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch("||"))
                 {
                     AddToken(TokenType.Or, "||");
                     UpdatePositionAndTracking(2);
+                    continue;
                 }
                 else if (TryMatch(">"))
                 {
                     AddToken(TokenType.GreaterThan, ">");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("<"))
                 {
                     AddToken(TokenType.LessThan, "<");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("!"))
                 {
                     AddToken(TokenType.Not, "!");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("+"))
                 {
                     AddToken(TokenType.Plus, "+");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("*"))
                 {
                     AddToken(TokenType.Multiply, "*");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("/"))
                 {
                     AddToken(TokenType.Divide, "/");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("("))
                 {
                     AddToken(TokenType.LeftParen, "(");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch(")"))
                 {
                     AddToken(TokenType.RightParen, ")");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (TryMatch("\""))
                 {
                     TokenizeString();
+                    continue;
                 }
                 else if (char.IsDigit(_input[_position]) || (_input[_position] == '-' && char.IsDigit(PeekNext())))
                 {
                     TokenizeNumber();
+                    continue;
                 }
                 else if (TryMatch("-"))
                 {
                     AddToken(TokenType.Minus, "-");
                     UpdatePositionAndTracking(1);
+                    continue;
                 }
                 else if (char.IsLetter(_input[_position]) || _input[_position] == '_')
                 {
                     TokenizeIdentifier();
+                    continue;
                 }
                 else
                 {
@@ -3858,7 +3883,7 @@ namespace TemplateInterpreter
                     var enumerable = (args[0] as ArrayValue).Value();
                     if (enumerable == null)
                     {
-                        throw new TemplateEvaluationException("length function requires an enumerable argument", context);
+                        throw new TemplateEvaluationException("length function requires an array argument", context);
                     }
                     return new NumberValue(enumerable.Count());
                 });
