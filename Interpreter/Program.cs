@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -26,9 +27,9 @@ namespace TemplateInterpreter
         Number,
         Boolean,
         DateTime,
-        Lambda,
         Lazy,
-        Function
+        Function,
+        Type
     }
 
     public abstract class Value
@@ -214,7 +215,7 @@ namespace TemplateInterpreter
         private readonly List<string> _parameterNames;
 
         public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value, List<string> parameterNames) : 
-            base(value, ValueType.Lambda) 
+            base(value, ValueType.Function) 
         {
             _parameterNames = parameterNames;
         }
@@ -250,6 +251,17 @@ namespace TemplateInterpreter
             return _value;
         }
     }
+
+    public class TypeValue : Value
+    {
+        public TypeValue(ValueType value) : base(value, ValueType.Type) { }
+
+        public ValueType Value()
+        {
+            return _value;
+        }
+    }
+
 
     public class Interpreter
     {
@@ -1020,7 +1032,7 @@ namespace TemplateInterpreter
         EndCapture,        // /capture
         CommentStart,      // *
         CommentEnd,        // *
-        StringType,        // string
+        Type,              // String | Number | Boolean | Array | Object | Function | DateTime
     }
 
     public class Lexer
@@ -1452,6 +1464,49 @@ namespace TemplateInterpreter
                 {
                     AddToken(TokenType.EndIf, "/if");
                     UpdatePositionAndTracking(3);
+                    continue;
+                }
+                else if (TryMatch("String"))
+                {
+                    AddToken(TokenType.Type, "String");
+                    UpdatePositionAndTracking(6);
+                    continue;
+                }
+                else if (TryMatch("Number"))
+                {
+                    AddToken(TokenType.Type, "Number");
+                    UpdatePositionAndTracking(6);
+                    continue;
+                }
+                else if (TryMatch("Boolean"))
+                {
+                    AddToken(TokenType.Type, "Boolean");
+                    UpdatePositionAndTracking(7);
+                    continue;
+                }
+                else if (TryMatch("Array"))
+                {
+                    AddToken(TokenType.Type, "Array");
+                    UpdatePositionAndTracking(5);
+                    continue;
+                }
+                else if (TryMatch("Object"))
+                {
+                    AddToken(TokenType.Type, "Object");
+                    UpdatePositionAndTracking(6);
+                    continue;
+                }
+                else if (TryMatch("Function"))
+                {
+                    AddToken(TokenType.Type, "Function");
+                    UpdatePositionAndTracking(8);
+                    continue;
+                }
+
+                else if (TryMatch("DateTime"))
+                {
+                    AddToken(TokenType.Type, "DateTime");
+                    UpdatePositionAndTracking(8);
                     continue;
                 }
                 else if (TryMatch(">="))
@@ -1892,6 +1947,31 @@ namespace TemplateInterpreter
         }
 
         public abstract string ToStackString();
+    }
+
+    public class TypeNode : AstNode
+    {
+        private readonly ValueType _type;
+
+        public TypeNode(ValueType type, SourceLocation location) : base(location)
+        {
+            _type = type;
+        }
+
+        public override Value Evaluate(ExecutionContext context)
+        {
+            return new TypeValue(_type);
+        }
+
+        public override string ToStackString()
+        {
+            return $"<type<{_type.ToString()}>>";
+        }
+
+        public override string ToString()
+        {
+            return $"TypeNode(type={_type.ToString()})";
+        }
     }
 
     public class LiteralNode : AstNode
@@ -3677,6 +3757,10 @@ namespace TemplateInterpreter
                     expr = new BooleanNode(false, token.Location);
                     break;
 
+                case TokenType.Type:
+                    expr = ParseType();
+                    break;
+
                 default:
                     string expectedTokens = "LeftBracket, ObjectStart, LeftParen, Function, Variable, String, Number, True, or False";
                     throw new TemplateParsingException($"Unexpected token: {token.Type}. Expected one of: {expectedTokens}", token.Location);
@@ -3708,6 +3792,40 @@ namespace TemplateInterpreter
             }
 
             return expr;
+        }
+
+        private AstNode ParseType()
+        {
+            var token = Current();
+            Advance();
+            ValueType type = ValueType.Type;
+            switch (token.Value)
+            {
+                case "String":
+                    type = ValueType.String; 
+                    break;
+                case "Number":
+                    type = ValueType.Number;
+                    break;
+                case "Boolean":
+                    type = ValueType.Boolean;
+                    break;
+                case "Array":
+                    type = ValueType.Array;
+                    break;
+                case "Object":
+                    type = ValueType.Object;
+                    break;
+                case "Function":
+                    type = ValueType.Function;
+                    break;
+                case "DateTime":
+                    type = ValueType.DateTime;
+                    break;
+                default:
+                    throw new TemplateParsingException($"Unable to parse unknown type {token.Value}", token.Location);
+            }
+            return new TypeNode(type, token.Location);
         }
 
         private bool IsLambdaAhead()
@@ -3898,6 +4016,16 @@ namespace TemplateInterpreter
 
         private void RegisterBuiltInFunctions()
         {
+            Register("typeof",
+                new List<ParameterDefinition> {
+                    new ParameterDefinition(typeof(Value))
+                },
+                (context, callSite, args) =>
+                {
+                    var value = args[0];
+                    return new TypeValue(value.TypeOf());
+                });
+
             Register("length",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(ArrayValue))
@@ -5784,9 +5912,13 @@ namespace TemplateInterpreter
             {
                 return $"\"{evaluated.ToString()}\"";
             }
-            else if ((evaluated is string || evaluated is char))
+            else if (evaluated is string || evaluated is char)
             {
                 return evaluated.ToString();
+            }
+            else if (evaluated is ValueType valueType)
+            {
+                return $"type<{valueType.ToString()}>";
             }
             else if (evaluated is IEnumerable<Value>) {
                 return FormatArrayOutput(evaluated);
@@ -5836,6 +5968,10 @@ namespace TemplateInterpreter
             else if (value is LazyValue)
             {
                 return "\"value<lazy>\"";
+            }
+            else if (value is TypeValue typeValue)
+            {
+                return $"\"type<{typeValue.Value().ToString()}>\"";
             }
             else if (value is ObjectValue obj)
             {

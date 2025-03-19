@@ -4418,5 +4418,305 @@ string";
 
             StringAssert.Contains("Circular template reference detected: 'header'", exception.Message);
         }
+
+        [Test]
+        public void CanSpecifyStringType()
+        {
+            // Arrange
+            string template = @"{{ String }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<String>"));
+        }
+
+        [Test]
+        public void CanSpecifyNumberType()
+        {
+            // Arrange
+            string template = @"{{ Number }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Number>"));
+        }
+
+        [Test]
+        public void CanSpecifyBooleanType()
+        {
+            // Arrange
+            string template = @"{{ Boolean }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Boolean>"));
+        }
+
+        [Test]
+        public void CanSpecifyArrayType()
+        {
+            // Arrange
+            string template = @"{{ Array }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Array>"));
+        }
+
+        [Test]
+        public void CanSpecifyObjectType()
+        {
+            // Arrange
+            string template = @"{{ Object }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Object>"));
+        }
+
+        [Test]
+        public void CanSpecifyFunctionType()
+        {
+            // Arrange
+            string template = @"{{ Function }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Function>"));
+        }
+
+        [Test]
+        public void CanSpecifyDateTimeType()
+        {
+            // Arrange
+            string template = @"{{ DateTime }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<DateTime>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfString()
+        {
+            // Arrange
+            string template = @"{{ typeof(""abc"") }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<String>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfNumber()
+        {
+            // Arrange
+            string template = @"{{ typeof(1) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Number>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfBoolean()
+        {
+            // Arrange
+            string template = @"{{ typeof(true) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Boolean>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfArray()
+        {
+            // Arrange
+            string template = @"{{ typeof([1, 2]) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Array>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfObject()
+        {
+            // Arrange
+            string template = @"{{ typeof(obj(x: 1)) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Object>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfFunction()
+        {
+            // Arrange
+            string template = @"{{ typeof(() => 1) }} {{ typeof(map) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<Function> type<Function>"));
+        }
+
+        [Test]
+        public void CanCheckTypeOfDateTime()
+        {
+            // Arrange
+            string template = @"{{ typeof(datetime(""2024-01-08 10:10:10"")) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<DateTime>"));
+        }
+
+
+        [Test]
+        public void CanRuntimeValidateStringType()
+        {
+            // Arrange
+            string template = @"{{ typeof(""abc"") == String }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateNumberType()
+        {
+            // Arrange
+            string template = @"{{ typeof(1) == Number }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateBooleanType()
+        {
+            // Arrange
+            string template = @"{{ typeof(true) == Boolean }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateArrayType()
+        {
+            // Arrange
+            string template = @"{{ typeof([1, 2]) == Array }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateObjectType()
+        {
+            // Arrange
+            string template = @"{{ typeof(obj(x: 1)) == Object }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateFunctionType()
+        {
+            // Arrange
+            string template = @"{{ typeof(() => 1) == Function }} {{ typeof(map) == Function }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true true"));
+        }
+
+        [Test]
+        public void CanRuntimeValidateDateTimeType()
+        {
+            // Arrange
+            string template = @"{{ typeof(datetime(""2024-01-08 10:10:10"")) == DateTime }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true"));
+        }
+
+        [Test]
+        public void CanRuntimeTypeCheckVariable()
+        {
+            // Arrange
+            string template = @"{{ let x = ""abc"" }}{{ typeof(x) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<String>"));
+        }
+
+        [Test]
+        public void CanFilterByType()
+        {
+            // Arrange
+            string template = @"{{ let arr = [1, 2, ""not number"", false, 3] }}{{ filter(arr, (x) => typeof(x) == Number) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("[1, 2, 3]"));
+        }
     }
 }
