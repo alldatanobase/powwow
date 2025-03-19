@@ -4718,5 +4718,18 @@ string";
             // Assert
             Assert.That(result, Is.EqualTo("[1, 2, 3]"));
         }
+
+        [Test]
+        public void TypesAreFirstClass()
+        {
+            // Arrange
+            string template = @"{{ let type = Array }}{{ type != typeof(3) }} {{ type != typeof([3]) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true false"));
+        }
     }
 }
