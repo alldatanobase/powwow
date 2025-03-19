@@ -1837,7 +1837,7 @@ Line 3
         public void ToJson_Func_ReturnsCorrectJson()
         {
             var template = "{{ toJson(obj(name: \"John\", age: 30, fn: (x, y) => 2 * x)) }}";
-            Assert.That(_interpreter.Interpret(template, new ExpandoObject()), Is.EqualTo("{\"name\":\"John\",\"age\":30,\"fn\":\"lambda()\"}"));
+            Assert.That(_interpreter.Interpret(template, new ExpandoObject()), Is.EqualTo("{\"name\":\"John\",\"age\":30,\"fn\":\"func<lambda(x, y)>\"}"));
         }
 
         [Test]
@@ -4333,6 +4333,19 @@ string";
             });
 
             StringAssert.Contains("No matching overload found for function 'nonexistent' with the provided arguments", exception.Message);
+        }
+
+        [Test]
+        public void PassBuiltInFunction()
+        {
+            // Arrange
+            string template = @"{{ let m = mod }}{{ m(10, 4) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("2"));
         }
 
         [Test]

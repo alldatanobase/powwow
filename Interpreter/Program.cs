@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -140,7 +139,6 @@ namespace TemplateInterpreter
         }
     }
 
-
     public class FunctionReferenceValue : Value
     {
         public string Name { get; }
@@ -213,7 +211,15 @@ namespace TemplateInterpreter
 
     public class LambdaValue : Value
     {
-        public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value) : base(value, ValueType.Lambda) { }
+        private readonly List<string> _parameterNames;
+
+        public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value, List<string> parameterNames) : 
+            base(value, ValueType.Lambda) 
+        {
+            _parameterNames = parameterNames;
+        }
+
+        public List<string> ParameterNames { get { return _parameterNames; } }
 
         public Func<ExecutionContext, AstNode, List<Value>, Value> Value()
         {
@@ -577,6 +583,12 @@ namespace TemplateInterpreter
             {
                 return value;
             }
+
+            if (GetFunctionRegistry().HasFunction(path))
+            {
+                return new FunctionReferenceValue(path);
+            }
+
             throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
         }
     }
@@ -1007,7 +1019,8 @@ namespace TemplateInterpreter
         Capture,           // capture
         EndCapture,        // /capture
         CommentStart,      // *
-        CommentEnd         // *
+        CommentEnd,        // *
+        StringType,        // string
     }
 
     public class Lexer
@@ -2050,7 +2063,6 @@ namespace TemplateInterpreter
 
             // Evaluate the callable, but handle special cases
             var callable = _callable.Evaluate(currentContext);
-            var callableValue = callable.Unbox();
 
             var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), currentContext) ?
                 _arguments.Select(arg => new LazyValue(arg, currentContext)).ToList<Value>() :
@@ -2096,6 +2108,18 @@ namespace TemplateInterpreter
                     {
                         // Lambda establishes its own new child context
                         return variableFunc.Value()(parentContext, this, args);
+                    }
+
+                    if (variableValue is FunctionReferenceValue variableFuncInfo)
+                    {
+                        if (!registry.TryGetFunction(variableFuncInfo.Name, args, out var varFunc, out var varEffArgs, currentContext))
+                        {
+                            throw new TemplateEvaluationException(
+                                $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
+                                currentContext);
+                        }
+                        registry.ValidateArguments(varFunc, varEffArgs, currentContext);
+                        return varFunc.Implementation(currentContext, this, varEffArgs);
                     }
                 }
 
@@ -2244,7 +2268,7 @@ namespace TemplateInterpreter
                 }
 
                 return _finalExpression.Evaluate(lambdaContext);
-            }));
+            }), _parameters);
         }
 
         public override string ToStackString()
@@ -5319,8 +5343,6 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        // Convert the object to a format suitable for serialization
-                        //var serializable = ConvertToSerializable(obj);
                         var json = TypeHelper.JsonSerialize(obj);
 
                         if (formatted)
@@ -5406,50 +5428,6 @@ namespace TemplateInterpreter
 
             // Return other primitives as-is (string, bool)
             throw new Exception($"Unable to convert value to known datatype: {obj}");
-        }
-
-        private object ConvertToSerializable(object obj)
-        {
-            if (obj == null) return null;
-
-            if (obj is IDictionary<string, dynamic>)
-            {
-                var dict = new Dictionary<string, object>();
-                foreach (var kvp in (IDictionary<string, object>)obj)
-                {
-                    dict[kvp.Key] = ConvertToSerializable(kvp.Value);
-                }
-                return dict;
-            }
-
-            // Handle arrays and collections
-            if (obj is System.Collections.IEnumerable enumerable && !(obj is string))
-            {
-                return enumerable.Cast<object>()
-                                .Select(item => ConvertToSerializable(item))
-                                .ToList();
-            }
-
-            // Handle DateTime
-            if (obj is DateTime dateTime)
-            {
-                return dateTime.ToString("o"); // ISO 8601 format
-            }
-
-            // Handle Uri
-            if (obj is Uri uri)
-            {
-                return uri.ToString();
-            }
-
-            // Handle numeric types - ensure proper decimal serialization
-            if (TypeHelper.IsConvertibleToDecimal(obj))
-            {
-                return Convert.ToDecimal(obj);
-            }
-
-            // Return primitives and other basic types as-is
-            return obj;
         }
 
         private string FormatJson(string json)
@@ -5847,13 +5825,17 @@ namespace TemplateInterpreter
             {
                 return booleanValue.Value() ? "true" : "false";
             }
-            else if (value is LambdaValue)
+            else if (value is LambdaValue lambdaValue)
             {
-                return "\"lambda()\"";
+                return $"\"func<lambda({string.Join(", ", lambdaValue.ParameterNames)})>\"";
+            }
+            else if (value is FunctionReferenceValue funcRefValue)
+            {
+                return $"\"func<{funcRefValue.Name}>\"";
             }
             else if (value is LazyValue)
             {
-                return "\"lazy()\"";
+                return "\"value<lazy>\"";
             }
             else if (value is ObjectValue obj)
             {
