@@ -2730,7 +2730,7 @@ End";
         [Test]
         public void BasicStatementList_Works()
         {
-            var template = "{{ ((a) => x = 1, y = 2, x + a * y)(3) }}";
+            var template = "{{ ((a) => let x = 1, let y = 2, x + a * y)(3) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("7"));
         }
@@ -2738,7 +2738,7 @@ End";
         [Test]
         public void SingleStatement_Works()
         {
-            var template = "{{ ((a) => x = a * 2, x)(3) }}";
+            var template = "{{ ((a) => let x = a * 2, x)(3) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("6"));
         }
@@ -2748,8 +2748,8 @@ End";
         {
             var template = @"{{ 
                 let fn = (n) =>
-                    count = length(n),
-                    squared = count * count,
+                    let count = length(n),
+                    let squared = count * count,
                     squared + 1
             }}{{ fn(""hello"") }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
@@ -2767,7 +2767,7 @@ End";
         [Test]
         public void ExternalVariableConflict_ThrowsException()
         {
-            var template = "{{ let x = 2 }}{{ (() => x = 3, x)() }}";
+            var template = "{{ let x = 2 }}{{ (() => let x = 3, x)() }}";
             Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
@@ -2775,7 +2775,7 @@ End";
         [Test]
         public void IteratorConflict_ThrowsException()
         {
-            var template = "{{ for x in [1,2,3] }}{{ (() => x = 3, x)() }}{{ /for }}";
+            var template = "{{ for x in [1,2,3] }}{{ (() => let x = 3, x)() }}{{ /for }}";
             Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, new ExpandoObject()),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
@@ -2786,7 +2786,7 @@ End";
             var data = new ExpandoObject() as IDictionary<string, object>;
             data["x"] = "hello world";
 
-            var template = "{{ ((a) => x = [\"foo\"], concat(a, x))([1]) }}";
+            var template = "{{ ((a) => let x = [\"foo\"], concat(a, x))([1]) }}";
             var exception = Assert.Throws<TemplateEvaluationException>(() => _interpreter.Interpret(template, data),
                 "Cannot define variable 'x' as it conflicts with an existing variable or field");
         }
@@ -2854,9 +2854,9 @@ End";
         {
             var template = @"{{ 
                 let fn = (x) => 
-                    mult = x * 2,
+                    let mult = x * 2,
                     (y) => 
-                        sum = mult + y,
+                        let sum = mult + y,
                         sum * 2
             }}{{ fn(3)(4) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
@@ -2892,8 +2892,8 @@ End";
         {
             var template = @"{{ let fn =
                 (arr) => 
-                    filtered = filter(arr, (x) => x > 2),
-                    sum = reduce(filtered, (acc, x) => acc + x, 0),
+                    let filtered = filter(arr, (x) => x > 2),
+                    let sum = reduce(filtered, (acc, x) => acc + x, 0),
                     sum / length(filtered)
             }}{{ fn([1,2,3,4,5]) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
@@ -2903,7 +2903,7 @@ End";
         [Test]
         public void StatementVariablesInScope_ForLaterStatements_Works()
         {
-            var template = "{{ (() => x = 10, y = x * 2, z = y + 5, z)() }}";
+            var template = "{{ (() => let x = 10, let y = x * 2, let z = y + 5, z)() }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("25")); // 10 * 2 + 5 = 25
         }
@@ -2911,7 +2911,7 @@ End";
         [Test]
         public void ClosureCapturesVariablesAndParams()
         {
-            var template = "{{ let x = ((v) => a = 5, (b) => b * a * v)(5) }}{{ x(5) }}";
+            var template = "{{ let x = ((v) => let a = 5, (b) => b * a * v)(5) }}{{ x(5) }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
             Assert.That(result, Is.EqualTo("125"));
         }
@@ -3065,7 +3065,7 @@ End";
         [Test]
         public void CallingObjectFunctionWorks()
         {
-            var template = @"{{ let o = (x) => self = (() => obj(value: () => x, y: 2, timesY: () => o(self.y * x)))(), self }}{{ let o1 = o(2) }}{{ o1.timesY().value() }}";
+            var template = @"{{ let o = (x) => let self = (() => obj(value: () => x, y: 2, timesY: () => o(self.y * x)))(), self }}{{ let o1 = o(2) }}{{ o1.timesY().value() }}";
             Assert.AreEqual("4", _interpreter.Interpret(template, new ExpandoObject()));
         }
 
@@ -3074,7 +3074,7 @@ End";
         {
             const string template = @"
 {{- let Identity = (x) => 
-   self = (() => obj(
+   let self = (() => obj(
      value: () => x,
      map: (f) => Identity(f(x)),
      bind: (f) => f(x),
@@ -3804,7 +3804,7 @@ Hello, {{ name }}!
         [Test]
         public void NestedClosureTest()
         {
-            var template = @"{{ let fn = (x) => p = 2, (y) => q = 3, (z) => r = 1, (p * q + r) + (x * y + z) }}{{ fn(2)(3)(1) }}";
+            var template = @"{{ let fn = (x) => let p = 2, (y) => let q = 3, (z) => let r = 1, (p * q + r) + (x * y + z) }}{{ fn(2)(3)(1) }}";
             Assert.That(_interpreter.Interpret(template, _emptyData), Is.EqualTo("14"));
         }
 
@@ -4730,6 +4730,225 @@ string";
 
             // Assert
             Assert.That(result, Is.EqualTo("true false"));
+        }
+
+        [Test]
+        public void SimpleVariableMutationExists()
+        {
+            // Arrange
+            string template = @"{{ let x = 1 }}{{ x }}{{ mut x = 2 }} {{ x }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1 2"));
+        }
+
+        [Test]
+        public void MutatingIteratorVariableThrowsError()
+        {
+            // Arrange
+            string template = @"{{ for x in [1, 2] }}{{ mut x = 3 }}{{ x }}{{ /for }}";
+
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Iterator variable x is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void MutatingVariableInLoopExists()
+        {
+            // Arrange
+            string template = @"{{ let a = 0 }}{{ for x in [1, 2] }}{{ mut a = x }}{{ a }}{{ /for }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("12"));
+        }
+
+
+        [Test]
+        public void MutatingVariableInIfExists()
+        {
+            // Arrange
+            string template = @"{{ let a = 0 }}{{ if false }}{{ mut a = ""foo"" }}{{ else }}{{ mut a = ""bar"" }}{{ /if }}{{ a }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("bar"));
+        }
+
+        [Test]
+        public void MutatingNonexistentVariableThrowsError()
+        {
+            // Arrange
+            string template = @"{{ mut a = 0 }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Cannot mutate variable 'a' because it has not been defined", exception.Message);
+        }
+
+        [Test]
+        public void MutatingGlobalDataVariableThrowsError()
+        {
+            // Arrange
+            string template = @"{{ var2 }}{{ mut var2 = 10 }}";
+            var data = new ExpandoObject();
+            ((IDictionary<string, object>)data).Add("var2", 2.5);
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, data);
+            });
+
+            StringAssert.Contains("Global variable var2 is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void MutatingVariableInLambdaExists()
+        {
+            // Arrange
+            string template = @"{{ (() => let x = 1, mut x = 2, x)() }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public void MutatingGlobalVariableInLambdaThrowsError()
+        {
+            // Arrange
+            string template = @"{{ (() => let x = 1, mut var2 = 2, x)() }}";
+            var data = new ExpandoObject();
+            ((IDictionary<string, object>)data).Add("var2", 2.5);
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, data);
+            });
+
+            StringAssert.Contains("Global variable var2 is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void MutatingParameterInLambdaThrowsError()
+        {
+            // Arrange
+            string template = @"{{ ((y) => let x = 1, mut y = 2, x * y)(1) }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Parameter y is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void IteratorVariableIsAvailableInClosure()
+        {
+            // Arrange
+            string template = @"{{ for y in [1, 2] }}{{ (() => 2 * y)() }} {{ /for }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("2 4 "));
+        }
+
+        [Test]
+        public void MutatingIteratorVariableInLambdaThrowsError()
+        {
+            // Arrange
+            string template = @"{{ for y in [1, 2] }}{{ (() => let x = 2, mut y = 2, x * y)() }}{{ /for }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Iterator variable y is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void MutatingParentClosureParameterThrowsError()
+        {
+            // Arrange
+            string template = @"{{ ((x) => (() => mut x = 2, x)())(1) }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Parameter x is not mutable and cannot be reassigned", exception.Message);
+        }
+
+        [Test]
+        public void MutatingFreeVariablesWorks()
+        {
+            // Arrange
+            string template = @"{{ let z = 1 }}{{ (() => let x = 1, (() => mut z = 3, mut x = 2, x * z)())(1) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("6"));
+        }
+
+        [Test]
+        public void CounterWorks()
+        {
+            // Arrange
+            string template = @"
+{{- let counter = (x) => 
+   let self = (() => obj(
+     current: x,
+     increment: () => mut self.current = self.current + 1, self.current
+   ))(), 
+   self 
+-}}
+{{- let c = counter(0) -}}
+{{- let _ = 0 -}}
+{{- for i in range(0, 10) -}}
+  {{- mut _ = c.increment() -}}
+{{- /for -}}
+{{ c.current }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("10"));
+        }
+
+        [Test]
+        public void CanAccessFieldsOfPassedObject()
+        {
+            // Arrange
+            string template = @"{{ ((o) => o.foo)(obj(foo: 1)) }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("1"));
         }
     }
 }

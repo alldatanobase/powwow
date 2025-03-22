@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -35,7 +34,7 @@ namespace TemplateInterpreter
     public abstract class Value
     {
         protected dynamic _value;
-        private readonly ValueType _type;
+        private ValueType _type;
 
         public Value(dynamic value, ValueType type)
         {
@@ -46,6 +45,12 @@ namespace TemplateInterpreter
         public dynamic Unbox()
         {
             return _value;
+        }
+
+        public void Mutate(Value value)
+        {
+            _value = value._value;
+            _type = value._type;
         }
 
         public ValueType TypeOf()
@@ -214,8 +219,8 @@ namespace TemplateInterpreter
     {
         private readonly List<string> _parameterNames;
 
-        public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value, List<string> parameterNames) : 
-            base(value, ValueType.Function) 
+        public LambdaValue(Func<ExecutionContext, AstNode, List<Value>, Value> value, List<string> parameterNames) :
+            base(value, ValueType.Function)
         {
             _parameterNames = parameterNames;
         }
@@ -399,8 +404,8 @@ namespace TemplateInterpreter
     public class ExecutionContext
     {
         protected readonly ObjectValue _data;
-        private readonly Dictionary<string, Value> _iteratorValues;
-        private readonly Dictionary<string, Value> _variables;
+        protected readonly Dictionary<string, Value> _iteratorValues;
+        protected Dictionary<string, Value> _variables;
         private readonly FunctionRegistry _functionRegistry;
         protected readonly ExecutionContext _parentContext;
         protected readonly int _maxDepth;
@@ -450,6 +455,20 @@ namespace TemplateInterpreter
 
             // If we get here, the name is safe to use
             _variables[name] = value;
+        }
+
+        public virtual void RedefineVariable(string name, Value value)
+        {
+            bool result = TryResolveMutableValue(name, out Value variable);
+            if (!result)
+            {
+                throw new TemplateEvaluationException(
+                    $"Cannot mutate variable '{name}' because it has not been defined",
+                    this);
+            }
+
+            // If we get here, the name is safe to use
+            variable.Mutate(value);
         }
 
         public ExecutionContext CreateIteratorContext(string iteratorName, Value value, AstNode callSite)
@@ -547,6 +566,60 @@ namespace TemplateInterpreter
             return true;
         }
 
+        public virtual bool TryResolveMutableValue(string path, out Value value)
+        {
+            value = null;
+            var parts = path.Split('.');
+            Value current = null;
+
+            // Check if the first part is an iterator
+            if (_iteratorValues.ContainsKey(parts[0]))
+            {
+                throw new TemplateEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned", this);
+            }
+            else if (_variables.ContainsKey(parts[0]))
+            {
+                current = _variables[parts[0]];
+                parts = parts.Skip(1).ToArray();
+
+                foreach (var part in parts)
+                {
+                    try
+                    {
+                        IDictionary<string, Value> currentObject = null;
+                        if (current is ObjectValue obj)
+                        {
+                            currentObject = obj.Value();
+                        }
+                        else if (current is IDictionary<string, Value> dict)
+                        {
+                            currentObject = dict;
+                        }
+                        current = currentObject[part];
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (TryGetDataProperty(parts[0], out current))
+            {
+                throw new TemplateEvaluationException($"Global variable {path} is not mutable and cannot be reassigned", this);
+            }
+            else if (_parentContext != null)
+            {
+                return _parentContext.TryResolveMutableValue(path, out value);
+            }
+            else
+            {
+                return false;
+            }
+
+            value = current;
+            return true;
+        }
+
         public virtual bool TryResolveValue(string path, out Value value)
         {
             value = null;
@@ -608,7 +681,6 @@ namespace TemplateInterpreter
     public class LambdaExecutionContext : ExecutionContext
     {
         private readonly Dictionary<string, Value> _parameters;
-        private readonly Dictionary<string, Value> _variables;
         private readonly ExecutionContext _definitionContext;
 
         public LambdaExecutionContext(
@@ -750,6 +822,73 @@ namespace TemplateInterpreter
                 {
                     return false;
                 }
+            }
+
+            value = current;
+            return true;
+        }
+
+        public override bool TryResolveMutableValue(string path, out Value value)
+        {
+            value = null;
+            var parts = path.Split('.');
+            Value current = null;
+
+            // Check if the first part is an iterator
+            if (_iteratorValues.ContainsKey(parts[0]))
+            {
+                throw new TemplateEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned", this);
+            }
+            else if (_parameters.TryGetValue(parts[0], out current))
+            {
+                throw new TemplateEvaluationException($"Parameter {path} is not mutable and cannot be reassigned", this);
+            }
+            else if (_variables.ContainsKey(parts[0]))
+            {
+                current = _variables[parts[0]];
+                parts = parts.Skip(1).ToArray();
+
+                foreach (var part in parts)
+                {
+                    try
+                    {
+                        IDictionary<string, Value> currentObject = null;
+                        if (current is ObjectValue obj)
+                        {
+                            currentObject = obj.Value();
+                        }
+                        else if (current is IDictionary<string, Value> dict)
+                        {
+                            currentObject = dict;
+                        }
+                        current = currentObject[part];
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (TryGetDataProperty(parts[0], out current))
+            {
+                throw new TemplateEvaluationException($"Global variable {path} is not mutable and cannot be reassigned", this);
+            }
+            else
+            {
+                Value descendentValue;
+
+                if (_definitionContext.TryResolveMutableValue(path, out descendentValue))
+                {
+                    value = descendentValue;
+                    return true;
+                }
+                else if (_parentContext.TryResolveMutableValue(path, out descendentValue))
+                {
+                    value = descendentValue;
+                    return true;
+                }
+
+                return false;
             }
 
             value = current;
@@ -1033,6 +1172,7 @@ namespace TemplateInterpreter
         CommentStart,      // *
         CommentEnd,        // *
         Type,              // String | Number | Boolean | Array | Object | Function | DateTime
+        Mutation           // mut
     }
 
     public class Lexer
@@ -1409,6 +1549,12 @@ namespace TemplateInterpreter
                 if (TryMatch("let"))
                 {
                     AddToken(TokenType.Let, "let");
+                    UpdatePositionAndTracking(3);
+                    continue;
+                }
+                else if (TryMatch("mut"))
+                {
+                    AddToken(TokenType.Mutation, "mut");
                     UpdatePositionAndTracking(3);
                     continue;
                 }
@@ -2271,12 +2417,18 @@ namespace TemplateInterpreter
     public class LambdaNode : AstNode
     {
         private readonly List<string> _parameters;
-        private readonly List<KeyValuePair<string, AstNode>> _statements;
+        private readonly List<KeyValuePair<string, Tuple<AstNode, StatementType>>> _statements;
         private readonly AstNode _finalExpression;
+
+        public enum StatementType
+        {
+            Declaration,
+            Mutation
+        }
 
         public LambdaNode(
             List<string> parameters,
-            List<KeyValuePair<string, AstNode>> statements,
+            List<KeyValuePair<string, Tuple<AstNode, StatementType>>> statements,
             AstNode finalExpression,
             FunctionRegistry functionRegistry,
             SourceLocation location) : base(location)
@@ -2304,23 +2456,26 @@ namespace TemplateInterpreter
 
             foreach (var statement in statements)
             {
-                if (parameters.Contains(statement.Key))
+                if (statement.Value.Item2 == StatementType.Declaration)
                 {
-                    throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
-                        location);
-                }
-                if (functionRegistry.HasFunction(statement.Key))
-                {
-                    throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing function",
-                        location);
-                }
-                if (!seenVariables.Add(statement.Key))
-                {
-                    throw new TemplateParsingException(
-                        $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
-                        location);
+                    if (parameters.Contains(statement.Key))
+                    {
+                        throw new TemplateParsingException(
+                            $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
+                            location);
+                    }
+                    if (functionRegistry.HasFunction(statement.Key))
+                    {
+                        throw new TemplateParsingException(
+                            $"Cannot define variable '{statement.Key}' because it conflicts with an existing function",
+                            location);
+                    }
+                    if (!seenVariables.Add(statement.Key))
+                    {
+                        throw new TemplateParsingException(
+                            $"Cannot define variable '{statement.Key}' because it conflicts with an existing variable or field",
+                            location);
+                    }
                 }
             }
 
@@ -2343,8 +2498,15 @@ namespace TemplateInterpreter
                 // Execute each statement in order
                 foreach (var statement in _statements)
                 {
-                    var value = statement.Value.Evaluate(lambdaContext);
-                    lambdaContext.DefineVariable(statement.Key, value);
+                    var value = statement.Value.Item1.Evaluate(lambdaContext);
+                    if (statement.Value.Item2 == StatementType.Declaration)
+                    {
+                        lambdaContext.DefineVariable(statement.Key, value);
+                    }
+                    else
+                    {
+                        lambdaContext.RedefineVariable(statement.Key, value);
+                    }
                 }
 
                 return _finalExpression.Evaluate(lambdaContext);
@@ -2359,7 +2521,8 @@ namespace TemplateInterpreter
         public override string ToString()
         {
             var paramsStr = string.Join(", ", _parameters.Select(p => $"\"{p}\""));
-            var statementsStr = string.Join(", ", _statements.Select(st => $"{{key=\"{st.Key}\", value={st.Value.ToString()}}}"));
+            var statementsStr = string.Join(", ",
+                _statements.Select(st => $"{{key=\"{st.Key}\", value={st.Value.Item1.ToString()}, type={st.Value.Item2.ToString()}}}"));
 
             return $"LambdaNode(parameters=[{paramsStr}], statements=[{statementsStr}], finalExpression={_finalExpression.ToString()})";
         }
@@ -2391,6 +2554,35 @@ namespace TemplateInterpreter
         public override string ToString()
         {
             return $"LetNode(variableName=\"{_variableName}\", expression={_expression.ToString()})";
+        }
+    }
+
+    public class MutationNode : AstNode
+    {
+        private readonly string _variableName;
+        private readonly AstNode _expression;
+
+        public MutationNode(string variableName, AstNode expression, SourceLocation location) : base(location)
+        {
+            _variableName = variableName;
+            _expression = expression;
+        }
+
+        public override Value Evaluate(ExecutionContext context)
+        {
+            var value = _expression.Evaluate(context);
+            context.RedefineVariable(_variableName, value);
+            return new StringValue(string.Empty); // Mutations don't produce output
+        }
+
+        public override string ToStackString()
+        {
+            return $"<mut>";
+        }
+
+        public override string ToString()
+        {
+            return $"MutationNode(variableName=\"{_variableName}\", expression={_expression.ToString()})";
         }
     }
 
@@ -2725,7 +2917,7 @@ namespace TemplateInterpreter
                     if (left.TypeOf() != right.TypeOf())
                     {
                         throw new TemplateEvaluationException(
-                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}", 
+                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}",
                             context);
                     }
                     else
@@ -2743,7 +2935,7 @@ namespace TemplateInterpreter
                     if (left.TypeOf() != right.TypeOf())
                     {
                         throw new TemplateEvaluationException(
-                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}", 
+                            $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}",
                             context);
                     }
                     else
@@ -2997,6 +3189,10 @@ namespace TemplateInterpreter
                     {
                         nodes.Add(ParseLetStatement());
                     }
+                    else if (nextToken.Type == TokenType.Mutation)
+                    {
+                        nodes.Add(ParseMutationStatement());
+                    }
                     else if (nextToken.Type == TokenType.Capture)
                     {
                         nodes.Add(ParseCaptureStatement());
@@ -3074,6 +3270,39 @@ namespace TemplateInterpreter
             Advance(); // Skip }}
 
             return new LetNode(variableName, expression, token.Location);
+        }
+
+        private AstNode ParseMutationStatement()
+        {
+            Advance(); // Skip {{
+            var token = Current();
+            Advance(); // Skip mut
+
+            var variableName = Expect(TokenType.Variable).Value;
+            Advance();
+
+            // Handle any fields accessed after a dot
+            while (_position < _tokens.Count && Current().Type == TokenType.Dot)
+            {
+                Advance(); // Skip the dot
+                var fieldToken = Current();
+                if (fieldToken.Type != TokenType.Field && fieldToken.Type != TokenType.Variable)
+                {
+                    throw new TemplateParsingException($"Expected field name but got {fieldToken.Type}", fieldToken.Location);
+                }
+                variableName = $"{variableName}.{fieldToken.Value}";
+                Advance();
+            }
+
+            Expect(TokenType.Assignment);
+            Advance();
+
+            var expression = ParseExpression();
+
+            Expect(TokenType.DirectiveEnd);
+            Advance(); // Skip }}
+
+            return new MutationNode(variableName, expression, token.Location);
         }
 
         private AstNode ParseCaptureStatement()
@@ -3208,7 +3437,7 @@ namespace TemplateInterpreter
             Advance(); // Skip (
 
             var parameters = new List<string>();
-            var statements = new List<KeyValuePair<string, AstNode>>();
+            var statements = new List<KeyValuePair<string, Tuple<AstNode, LambdaNode.StatementType>>>();
 
             // Parse parameters
             if (Current().Type != TokenType.RightParen)
@@ -3278,17 +3507,43 @@ namespace TemplateInterpreter
             // Parse statement list
             while (true)
             {
-                if (Current().Type != TokenType.Variable ||
-                    _tokens.Count < _position + 1 ||
-                    _tokens[_position + 1].Type != TokenType.Assignment)
+                if (Current().Type != TokenType.Let && Current().Type != TokenType.Mutation)
                 {
-                    // If we don't see a variable or next token is not assignment, this must be the final expression
+                    // If next expression is not a variable declaration or mutation then must be return statement
                     var finalExpression = ParseExpression();
                     return new LambdaNode(parameters, statements, finalExpression, _functionRegistry, token.Location);
                 }
 
-                var variableName = Current().Value;
-                Advance();
+                var statementType = Current().Type == TokenType.Let ? LambdaNode.StatementType.Declaration : LambdaNode.StatementType.Mutation;
+                Advance(); // skip let or mut
+
+                string variableName = null;
+                try
+                {
+                    Expect(TokenType.Variable);
+                    variableName = Current().Value;
+                    Advance();
+                }
+                catch (TemplateParsingException ex)
+                {
+                    throw new TemplateParsingException(
+                        $"Expected variable name after 'let' or 'mut' in lambda: {ex.Descriptor}",
+                        Current().Location
+                    );
+                }
+
+                // Handle any fields accessed after a dot
+                while (_position < _tokens.Count && Current().Type == TokenType.Dot)
+                {
+                    Advance(); // Skip the dot
+                    var fieldToken = Current();
+                    if (fieldToken.Type != TokenType.Field && fieldToken.Type != TokenType.Variable)
+                    {
+                        throw new TemplateParsingException($"Expected field name but got {fieldToken.Type}", fieldToken.Location);
+                    }
+                    variableName = $"{variableName}.{fieldToken.Value}";
+                    Advance();
+                }
 
                 try
                 {
@@ -3304,7 +3559,9 @@ namespace TemplateInterpreter
                 }
 
                 var expression = ParseExpression();
-                statements.Add(new KeyValuePair<string, AstNode>(variableName, expression));
+                statements.Add(new KeyValuePair<string, Tuple<AstNode, LambdaNode.StatementType>>(
+                    variableName,
+                    Tuple.Create(expression, statementType)));
 
                 try
                 {
@@ -3802,7 +4059,7 @@ namespace TemplateInterpreter
             switch (token.Value)
             {
                 case "String":
-                    type = ValueType.String; 
+                    type = ValueType.String;
                     break;
                 case "Number":
                     type = ValueType.Number;
@@ -4839,8 +5096,8 @@ namespace TemplateInterpreter
                         throw new TemplateEvaluationException("order function requires an array as first argument", context);
                     }
 
-                    return new ArrayValue(ascending ? 
-                        array.OrderBy(x => x.Unbox()).ToList() : 
+                    return new ArrayValue(ascending ?
+                        array.OrderBy(x => x.Unbox()).ToList() :
                         array.OrderByDescending(x => x.Unbox()).ToList());
                 });
 
@@ -5920,7 +6177,8 @@ namespace TemplateInterpreter
             {
                 return $"type<{valueType.ToString()}>";
             }
-            else if (evaluated is IEnumerable<Value>) {
+            else if (evaluated is IEnumerable<Value>)
+            {
                 return FormatArrayOutput(evaluated);
             }
             else if (evaluated is IDictionary<string, Value> dict)
