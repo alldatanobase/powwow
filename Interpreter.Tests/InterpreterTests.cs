@@ -1601,7 +1601,7 @@ Line 3
             _interpreter.RegisterFunction(
                 "greet",
                 new List<ParameterDefinition> { new ParameterDefinition(typeof(StringValue)) },
-                (context, callSite, args) => new StringValue($"Hello, {(args[0] as StringValue).Value()}!"));
+                (context, callSite, args) => new Value(new StringValue($"Hello, {(args[0].ValueOf() as StringValue).Value()}!")));
 
             var template = "{{capture x}}{{greet(\"World\")}}{{/capture}}Message: {{x}}";
             dynamic data = new ExpandoObject();

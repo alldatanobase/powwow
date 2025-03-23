@@ -31,26 +31,67 @@ namespace TemplateInterpreter
         Type
     }
 
-    public abstract class Value
+    public class Value
+    {
+        private Box _box;
+
+        public Value(Box box)
+        {
+            _box = box;
+        }
+
+        public Box ValueOf()
+        {
+            return _box;
+        }
+
+        public void Mutate(Box value)
+        {
+            _box = value;
+        }
+
+        public ValueType TypeOf()
+        {
+            return _box.TypeOf();
+        }
+
+        public override string ToString()
+        {
+            return _box.ToString();
+        }
+
+        public string Output()
+        {
+            return _box.Output();
+        }
+
+        public bool ExpectType(ValueType type)
+        {
+            if (_box.TypeOf() == type)
+            {
+                return true;
+            }
+            else
+            {
+                throw new InnerEvaluationException($"Expected type {type} but found {_box.TypeOf()}");
+            }
+        }
+    }
+
+    public abstract class Box
     {
         protected dynamic _value;
         private ValueType _type;
 
-        public Value(dynamic value, ValueType type)
+        public Box(dynamic value, ValueType type)
         {
-            this._value = value;
-            this._type = type;
+            _value = value;
+            _type = type;
         }
 
         public dynamic Unbox()
         {
             return _value;
-        }
-
-        public void Mutate(Value value)
-        {
-            _value = value._value;
-            _type = value._type;
         }
 
         public ValueType TypeOf()
@@ -63,17 +104,7 @@ namespace TemplateInterpreter
             return _value.ToString();
         }
 
-        public bool ExpectType(ValueType type, ExecutionContext context)
-        {
-            if (_type == type)
-            {
-                return true;
-            }
-            else
-            {
-                throw new InnerEvaluationException($"Expected type {type} but found {_type}");
-            }
-        }
+        public abstract string Output();
     }
 
     public static class ValueFactory
@@ -87,7 +118,7 @@ namespace TemplateInterpreter
                 {
                     valueObj[key] = ValueFactory.Create(dict[key]);
                 }
-                return new ObjectValue(valueObj);
+                return new Value(new ObjectValue(valueObj));
             }
             else if (value is IEnumerable<dynamic> ||
                 value is IEnumerable<decimal> ||
@@ -110,23 +141,23 @@ namespace TemplateInterpreter
                 {
                     arr.Add(ValueFactory.Create(item));
                 }
-                return new ArrayValue(arr);
+                return new Value(new ArrayValue(arr));
             }
             else if (value is string || value is char)
             {
-                return new StringValue(value.ToString());
+                return new Value(new StringValue(value.ToString()));
             }
             else if (TypeHelper.IsConvertibleToDecimal(value))
             {
-                return new NumberValue(Convert.ToDecimal(value));
+                return new Value(new NumberValue(Convert.ToDecimal(value)));
             }
             else if (value is bool)
             {
-                return new BooleanValue(value);
+                return new Value(new BooleanValue(value));
             }
             else if (value is DateTime)
             {
-                return new DateTimeValue(value);
+                return new Value(new DateTimeValue(value));
             }
             else if (value is object)
             {
@@ -136,7 +167,7 @@ namespace TemplateInterpreter
                 {
                     valueObj[property.Name] = ValueFactory.Create(property.GetValue(value));
                 }
-                return new ObjectValue(valueObj);
+                return new Value(new ObjectValue(valueObj));
             }
             else
             {
@@ -145,7 +176,7 @@ namespace TemplateInterpreter
         }
     }
 
-    public class FunctionReferenceValue : Value
+    public class FunctionReferenceValue : Box
     {
         public string Name { get; }
 
@@ -153,9 +184,14 @@ namespace TemplateInterpreter
         {
             Name = name;
         }
+
+        public override string Output()
+        {
+            throw new NotImplementedException();
+        }
     }
 
-    public class StringValue : Value
+    public class StringValue : Box
     {
         public StringValue(string value) : base(value, ValueType.String) { }
 
@@ -163,9 +199,14 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string Output()
+        {
+            return _value as string;
+        }
     }
 
-    public class NumberValue : Value
+    public class NumberValue : Box
     {
         public NumberValue(decimal value) : base(value, ValueType.Number) { }
 
@@ -173,11 +214,21 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string Output()
+        {
+            return ((decimal)_value).ToString();
+        }
     }
 
-    public class BooleanValue : Value
+    public class BooleanValue : Box
     {
         public BooleanValue(bool value) : base(value, ValueType.Boolean) { }
+
+        public override string Output()
+        {
+            return (bool)_value ? "true" : "false";
+        }
 
         public bool Value()
         {
@@ -185,9 +236,14 @@ namespace TemplateInterpreter
         }
     }
 
-    public class DateTimeValue : Value
+    public class DateTimeValue : Box
     {
         public DateTimeValue(DateTime value) : base(value, ValueType.DateTime) { }
+
+        public override string Output()
+        {
+            return ((DateTime)_value).ToString("o"); // ISO 8601 format
+        }
 
         public DateTime Value()
         {
@@ -195,7 +251,7 @@ namespace TemplateInterpreter
         }
     }
 
-    public class ObjectValue : Value
+    public class ObjectValue : Box
     {
         public ObjectValue(IDictionary<string, Value> value) : base(value, ValueType.Object) { }
 
@@ -203,9 +259,16 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string Output()
+        {
+            IDictionary<string, Value> dict = (IDictionary<string, Value>) _value;
+            return string.Concat("{",
+                string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", (dict[key].Output())))), "}");
+        }
     }
 
-    public class ArrayValue : Value
+    public class ArrayValue : Box
     {
         public ArrayValue(IEnumerable<Value> value) : base(value, ValueType.Array) { }
 
@@ -213,9 +276,15 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string Output()
+        {
+            IEnumerable<Value> value = (IEnumerable<Value>)_value;
+            return string.Concat("[", string.Join(", ", value.Select(item => item.Output())), "]");
+        }
     }
 
-    public class LambdaValue : Value
+    public class LambdaValue : Box
     {
         private readonly List<string> _parameterNames;
 
@@ -231,9 +300,14 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string Output()
+        {
+            return $"lambda({string.Join(", ", _parameterNames)})";
+        }
     }
 
-    public class LazyValue : Value
+    public class LazyValue : Box
     {
         private readonly AstNode _expression;
         private readonly ExecutionContext _capturedContext;
@@ -255,9 +329,21 @@ namespace TemplateInterpreter
             }
             return _value;
         }
+
+        public override string Output()
+        {
+            if (_isEvaluated)
+            {
+                return ((Value)_value).Output();
+            }
+            else
+            {
+                return ($"lazy({_expression.ToStackString()})");
+            }
+        }
     }
 
-    public class TypeValue : Value
+    public class TypeValue : Box
     {
         public TypeValue(ValueType value) : base(value, ValueType.Type) { }
 
@@ -265,8 +351,13 @@ namespace TemplateInterpreter
         {
             return _value;
         }
-    }
 
+        public override string Output()
+        {
+            return $"type<{(ValueType)_value}>";
+        }
+
+    }
 
     public class Interpreter
     {
@@ -313,7 +404,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    var fetchXml = (args[0] as StringValue).Value();
+                    var fetchXml = (args[0].ValueOf() as StringValue).Value();
 
                     if (string.IsNullOrEmpty(fetchXml))
                     {
@@ -339,7 +430,7 @@ namespace TemplateInterpreter
             }
 
             return ast.Evaluate(new ExecutionContext(
-                data != null ? ValueFactory.Create(data) as ObjectValue : new ObjectValue(new Dictionary<string, Value>()),
+                data != null ? ValueFactory.Create(data) : new Value(new ObjectValue(new Dictionary<string, Value>())),
                 _functionRegistry,
                 null,
                 _maxRecursionDepth,
@@ -409,7 +500,7 @@ namespace TemplateInterpreter
 
     public class ExecutionContext
     {
-        protected readonly ObjectValue _data;
+        protected readonly Value _data;
         protected readonly Dictionary<string, Value> _iteratorValues;
         protected Dictionary<string, Value> _variables;
         private readonly FunctionRegistry _functionRegistry;
@@ -424,7 +515,7 @@ namespace TemplateInterpreter
         public AstNode CallSite { get { return _callSite; } }
 
         public ExecutionContext(
-            ObjectValue data,
+            Value data,
             FunctionRegistry functionRegistry,
             ExecutionContext parentContext,
             int maxDepth,
@@ -475,7 +566,7 @@ namespace TemplateInterpreter
             }
 
             // If we get here, the name is safe to use
-            variable.Mutate(value);
+            variable.Mutate(value.ValueOf());
         }
 
         public ExecutionContext CreateIteratorContext(string iteratorName, Value value, AstNode callSite)
@@ -503,7 +594,7 @@ namespace TemplateInterpreter
             return _functionRegistry;
         }
 
-        public ObjectValue GetData()
+        public Value GetData()
         {
             return _data;
         }
@@ -517,7 +608,7 @@ namespace TemplateInterpreter
                 return false;
             }
 
-            return _data.Value().TryGetValue(propertyName, out value);
+            return _data.ValueOf().Unbox().TryGetValue(propertyName, out value);
         }
 
         public virtual bool TryResolveNonShadowableValue(string path, out Value value)
@@ -553,7 +644,7 @@ namespace TemplateInterpreter
                 try
                 {
                     IDictionary<string, Value> currentObject = null;
-                    if (current is ObjectValue obj)
+                    if (current.ValueOf() is ObjectValue obj)
                     {
                         currentObject = obj.Value();
                     }
@@ -594,7 +685,7 @@ namespace TemplateInterpreter
                     try
                     {
                         IDictionary<string, Value> currentObject = null;
-                        if (current is ObjectValue obj)
+                        if (current.ValueOf() is ObjectValue obj)
                         {
                             currentObject = obj.Value();
                         }
@@ -678,7 +769,7 @@ namespace TemplateInterpreter
 
             if (GetFunctionRegistry().HasFunction(path))
             {
-                return new FunctionReferenceValue(path);
+                return new Value(new FunctionReferenceValue(path));
             }
 
             throw new InnerEvaluationException($"Unknown identifier: {path}");
@@ -812,7 +903,7 @@ namespace TemplateInterpreter
                 try
                 {
                     IDictionary<string, Value> currentObject = null;
-                    if (current is ObjectValue obj)
+                    if (current.ValueOf() is ObjectValue obj)
                     {
                         currentObject = obj.Value();
                     }
@@ -857,7 +948,7 @@ namespace TemplateInterpreter
                     try
                     {
                         IDictionary<string, Value> currentObject = null;
-                        if (current is ObjectValue obj)
+                        if (current.ValueOf() is ObjectValue obj)
                         {
                             currentObject = obj.Value();
                         }
@@ -958,7 +1049,7 @@ namespace TemplateInterpreter
                     try
                     {
                         IDictionary<string, Value> currentObject = null;
-                        if (current is ObjectValue obj)
+                        if (current.ValueOf() is ObjectValue obj)
                         {
                             currentObject = obj.Value();
                         }
@@ -986,7 +1077,7 @@ namespace TemplateInterpreter
                     try
                     {
                         IDictionary<string, Value> currentObject = null;
-                        if (current is ObjectValue obj)
+                        if (current.ValueOf() is ObjectValue obj)
                         {
                             currentObject = obj.Value();
                         }
@@ -2103,6 +2194,8 @@ namespace TemplateInterpreter
         }
 
         public abstract string ToStackString();
+
+        public abstract string Name();
     }
 
     public class TypeNode : AstNode
@@ -2116,7 +2209,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new TypeValue(_type);
+            return new Value(new TypeValue(_type));
+        }
+
+        public override string Name()
+        {
+            return "<type>";
         }
 
         public override string ToStackString()
@@ -2141,7 +2239,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new StringValue(_content);
+            return new Value(new StringValue(_content));
+        }
+
+        public override string Name()
+        {
+            return "<literal>";
         }
 
         public override string ToStackString()
@@ -2199,6 +2302,11 @@ namespace TemplateInterpreter
 
         public override string ToStackString()
         {
+            return $"<include {_templateName}>";
+        }
+
+        public override string Name()
+        {
             return "<include>";
         }
     }
@@ -2214,7 +2322,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new StringValue(_text);
+            return new Value(new StringValue(_text));
+        }
+
+        public override string Name()
+        {
+            return $"<text>";
         }
 
         public override string ToStackString()
@@ -2239,7 +2352,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new StringValue(_text);
+            return new Value(new StringValue(_text));
+        }
+
+        public override string Name()
+        {
+            return "<whitespace>";
         }
 
         public override string ToStackString()
@@ -2264,7 +2382,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new StringValue(_text);
+            return new Value(new StringValue(_text));
+        }
+
+        public override string Name()
+        {
+            return "<newline>";
         }
 
         public override string ToStackString()
@@ -2304,17 +2427,17 @@ namespace TemplateInterpreter
             var callable = _callable.Evaluate(currentContext);
 
             var args = IsLazilyEvaluatedFunction(callable, _arguments.Count(), currentContext) ?
-                _arguments.Select(arg => new LazyValue(arg, currentContext)).ToList<Value>() :
-                _arguments.Select(arg => arg.Evaluate(currentContext)).ToList<Value>();
+                _arguments.Select(arg => new Value(new LazyValue(arg, currentContext))).ToList() :
+                _arguments.Select(arg => arg.Evaluate(currentContext)).ToList();
 
             // Now handle the callable based on its type
-            if (callable is LambdaValue lambdaFunc)
+            if (callable.ValueOf() is LambdaValue lambdaFunc)
             {
                 // Direct lambda invocation
                 // Lambda establishes its own new child context
                 return lambdaFunc.Value()(parentContext, this, args);
             }
-            else if (callable is FunctionReferenceValue functionInfo)
+            else if (callable.ValueOf() is FunctionReferenceValue functionInfo)
             {
                 var registry = context.GetFunctionRegistry();
 
@@ -2322,12 +2445,12 @@ namespace TemplateInterpreter
                 if (context is LambdaExecutionContext lambdaContext &&
                     lambdaContext.TryGetParameterFromAnyContext(functionInfo.Name, out var paramValue))
                 {
-                    if (paramValue is LambdaValue paramFunc)
+                    if (paramValue.ValueOf() is LambdaValue paramFunc)
                     {
                         // Lambda establishes its own new child context
                         return paramFunc.Value()(parentContext, this, args);
                     }
-                    else if (paramValue is FunctionReferenceValue paramFuncInfo)
+                    else if (paramValue.ValueOf() is FunctionReferenceValue paramFuncInfo)
                     {
 
                         try
@@ -2352,13 +2475,13 @@ namespace TemplateInterpreter
                 // Check if this is a variable that contains a function
                 if (context.TryResolveValue(functionInfo.Name, out var variableValue))
                 {
-                    if (variableValue is LambdaValue variableFunc)
+                    if (variableValue.ValueOf() is LambdaValue variableFunc)
                     {
                         // Lambda establishes its own new child context
                         return variableFunc.Value()(parentContext, this, args);
                     }
 
-                    if (variableValue is FunctionReferenceValue variableFuncInfo)
+                    if (variableValue.ValueOf() is FunctionReferenceValue variableFuncInfo)
                     {
                         try
                         {
@@ -2407,7 +2530,7 @@ namespace TemplateInterpreter
         private bool IsLazilyEvaluatedFunction(Value callable, int argumentCount, ExecutionContext context)
         {
             // Check if this is a function that requires lazy evaluation
-            if (callable is FunctionReferenceValue functionInfo)
+            if (callable.ValueOf() is FunctionReferenceValue functionInfo)
             {
                 var registry = context.GetFunctionRegistry();
                 return registry.LazyFunctionExists(functionInfo.Name, argumentCount);
@@ -2426,6 +2549,11 @@ namespace TemplateInterpreter
             var argsStr = string.Join(", ", _arguments.Select(arg => arg.ToString()));
             return $"InvocationNode(callable={_callable.ToString()}, arguments=[{argsStr}])";
         }
+
+        public override string Name()
+        {
+            return "<invocation>";
+        }
     }
 
     public class FunctionReferenceNode : AstNode
@@ -2439,7 +2567,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new FunctionReferenceValue(_functionName);
+            return new Value(new FunctionReferenceValue(_functionName));
+        }
+
+        public override string Name()
+        {
+            return "<function ref>";
         }
 
         public override string ToStackString()
@@ -2529,7 +2662,7 @@ namespace TemplateInterpreter
 
             // Return a delegate that can be called later with parameters
             // Context is captured here, during evaluation, not during parsing
-            return new LambdaValue(new Func<ExecutionContext, AstNode, List<Value>, Value>((callerContext, callSite, args) =>
+            return new Value(new LambdaValue(new Func<ExecutionContext, AstNode, List<Value>, Value>((callerContext, callSite, args) =>
             {
                 try
                 {
@@ -2563,12 +2696,12 @@ namespace TemplateInterpreter
                 {
                     throw new TemplateEvaluationException(ex.Message, context, this);
                 }
-            }), _parameters);
+            }), _parameters));
         }
 
         public override string ToStackString()
         {
-            return $"<lambda>";
+            return $"<lambda {string.Join(", ", _parameters)}>";
         }
 
         public override string ToString()
@@ -2578,6 +2711,11 @@ namespace TemplateInterpreter
                 _statements.Select(st => $"{{key=\"{st.Key}\", value={st.Value.Item1.ToString()}, type={st.Value.Item2.ToString()}}}"));
 
             return $"LambdaNode(parameters=[{paramsStr}], statements=[{statementsStr}], finalExpression={_finalExpression.ToString()})";
+        }
+
+        public override string Name()
+        {
+            return "<lambda>";
         }
     }
 
@@ -2603,12 +2741,17 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(ex.Message, context, this);
             }
-            return new StringValue(string.Empty); // Let statements don't produce output
+            return new Value(new StringValue(string.Empty)); // Let statements don't produce outpu)t
+        }
+
+        public override string Name()
+        {
+            return "<let>";
         }
 
         public override string ToStackString()
         {
-            return $"<let>";
+            return $"<let {_variableName}>";
         }
 
         public override string ToString()
@@ -2639,12 +2782,17 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(ex.Message, context, this);
             }
-            return new StringValue(string.Empty); // Mutations don't produce output
+            return new Value(new StringValue(string.Empty)); // Mutations don't produce output
+        }
+
+        public override string Name()
+        {
+            return "<mut>";
         }
 
         public override string ToStackString()
         {
-            return $"<mut>";
+            return $"<mut {_variableName}>";
         }
 
         public override string ToString()
@@ -2675,12 +2823,17 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(ex.Message, context, this);
             }
-            return new StringValue(string.Empty); // Capture doesn't output anything directly
+            return new Value(new StringValue(string.Empty)); // Capture doesn't output anything directly
+        }
+
+        public override string Name()
+        {
+            return "<capture>";
         }
 
         public override string ToStackString()
         {
-            return $"<capture>";
+            return $"<capture {_variableName}>";
         }
 
         public override string ToString()
@@ -2707,12 +2860,17 @@ namespace TemplateInterpreter
                 dict[field.Key] = field.Value.Evaluate(context);
             }
 
-            return new ObjectValue(dict);
+            return new Value(new ObjectValue(dict));
+        }
+
+        public override string Name()
+        {
+            return "<obj>";
         }
 
         public override string ToStackString()
         {
-            return $"<obj>";
+            return "<obj>";
         }
 
         public override string ToString()
@@ -2744,7 +2902,7 @@ namespace TemplateInterpreter
                     _object);
             }
 
-            if (evaluated is ObjectValue obj)
+            if (evaluated.ValueOf() is ObjectValue obj)
             {
                 var value = obj.Value();
                 if (!value.ContainsKey(_fieldName))
@@ -2761,6 +2919,11 @@ namespace TemplateInterpreter
                 $"Object does not contain field '{_fieldName}'",
                 context,
                 _object);
+        }
+
+        public override string Name()
+        {
+            return "<field access>";
         }
 
         public override string ToStackString()
@@ -2785,7 +2948,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new ArrayValue(_elements.Select(element => element.Evaluate(context)).ToList());
+            return new Value(new ArrayValue(_elements.Select(element => element.Evaluate(context)).ToList()));
+        }
+
+        public override string Name()
+        {
+            return "<array>";
         }
 
         public override string ToStackString()
@@ -2822,6 +2990,11 @@ namespace TemplateInterpreter
             }
         }
 
+        public override string Name()
+        {
+            return "<variable>";
+        }
+
         public override string ToStackString()
         {
             return $"{_path}";
@@ -2844,7 +3017,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new StringValue(_value);
+            return new Value(new StringValue(_value));
+        }
+
+        public override string Name()
+        {
+            return "<string>";
         }
 
         public override string ToStackString()
@@ -2869,7 +3047,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new NumberValue(_value);
+            return new Value(new NumberValue(_value));
+        }
+
+        public override string Name()
+        {
+            return "<number>";
         }
 
         public override string ToStackString()
@@ -2894,7 +3077,12 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return new BooleanValue(_value);
+            return new Value(new BooleanValue(_value));
+        }
+
+        public override string Name()
+        {
+            return "<boolean>";
         }
 
         public override string ToStackString()
@@ -2926,20 +3114,25 @@ namespace TemplateInterpreter
             switch (_operator)
             {
                 case TokenType.Not:
-                    if (!(value is BooleanValue boolValue))
+                    if (!(value.ValueOf() is BooleanValue boolValue))
                     {
                         throw new TemplateEvaluationException(
                             $"Expected value of type boolean but found {value.GetType()}",
                             context,
                             _expression);
                     }
-                    return new BooleanValue(!boolValue.Value());
+                    return new Value(new BooleanValue(!boolValue.Value()));
                 default:
                     throw new TemplateEvaluationException(
                         $"Unknown unary operator: {_operator}",
                         context,
                         this);
             }
+        }
+
+        public override string Name()
+        {
+            return "<unary>";
         }
 
         public override string ToStackString()
@@ -2971,17 +3164,17 @@ namespace TemplateInterpreter
             // short circuit eval for &&
             if (_operator == TokenType.And)
             {
-                return new BooleanValue(
+                return new Value(new BooleanValue(
                     TypeHelper.UnboxBoolean(_left.Evaluate(context), context, _left) &&
-                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right));
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right)));
             }
 
             // short circuit eval for ||
             if (_operator == TokenType.Or)
             {
-                return new BooleanValue(
+                return new Value(new BooleanValue(
                     TypeHelper.UnboxBoolean(_left.Evaluate(context), context, _left) ||
-                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right));
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right)));
             }
 
             var left = _left.Evaluate(context);
@@ -2992,21 +3185,21 @@ namespace TemplateInterpreter
             switch (_operator)
             {
                 case TokenType.Plus:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) + TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) + TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.Minus:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) - TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) - TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.Multiply:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) * TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) * TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.Divide:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) / TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) / TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.LessThan:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) < TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) < TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.LessThanEqual:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) <= TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) <= TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.GreaterThan:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) > TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) > TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.GreaterThanEqual:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) >= TypeHelper.UnboxNumber(right, context, _right));
+                    return new Value(new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) >= TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.Equal:
                     if (left.TypeOf() != right.TypeOf())
                     {
@@ -3017,13 +3210,13 @@ namespace TemplateInterpreter
                     }
                     else
                     {
-                        if (left is DateTimeValue leftDateTime && right is DateTimeValue rightDateTIme)
+                        if (left.ValueOf() is DateTimeValue leftDateTime && right.ValueOf() is DateTimeValue rightDateTime)
                         {
-                            return new BooleanValue(Equals(leftDateTime.Value().Ticks, rightDateTIme.Value().Ticks));
+                            return new Value(new BooleanValue(Equals(leftDateTime.Value().Ticks, rightDateTime.Value().Ticks)));
                         }
                         else
                         {
-                            return new BooleanValue(Equals(left.Unbox(), right.Unbox()));
+                            return new Value(new BooleanValue(Equals(left.ValueOf().Unbox(), right.ValueOf().Unbox())));
                         }
                     }
                 case TokenType.NotEqual:
@@ -3036,13 +3229,13 @@ namespace TemplateInterpreter
                     }
                     else
                     {
-                        if (left is DateTimeValue leftDateTime && right is DateTimeValue rightDateTIme)
+                        if (left.ValueOf() is DateTimeValue leftDateTime && right.ValueOf() is DateTimeValue rightDateTIme)
                         {
-                            return new BooleanValue(!Equals(leftDateTime.Value().Ticks, rightDateTIme.Value().Ticks));
+                            return new Value(new BooleanValue(!Equals(leftDateTime.Value().Ticks, rightDateTIme.Value().Ticks)));
                         }
                         else
                         {
-                            return new BooleanValue(!Equals(left.Unbox(), right.Unbox()));
+                            return new Value(new BooleanValue(!Equals(left.ValueOf().Unbox(), right.ValueOf().Unbox())));
                         }
                     }
                 default:
@@ -3051,6 +3244,11 @@ namespace TemplateInterpreter
                         context,
                         this);
             }
+        }
+
+        public override string Name()
+        {
+            return "<binary>";
         }
 
         public override string ToStackString()
@@ -3095,7 +3293,7 @@ namespace TemplateInterpreter
             }
 
             var collection = _collection.Evaluate(context);
-            if (collection is ArrayValue array)
+            if (collection.ValueOf() is ArrayValue array)
             {
                 var result = new StringBuilder();
                 foreach (var item in array.Value())
@@ -3103,7 +3301,7 @@ namespace TemplateInterpreter
                     var iterationContext = context.CreateIteratorContext(_iteratorName, item, this);
                     result.Append(_body.Evaluate(iterationContext));
                 }
-                return new StringValue(result.ToString());
+                return new Value(new StringValue(result.ToString()));
             }
             else
             {
@@ -3122,6 +3320,11 @@ namespace TemplateInterpreter
         public override string ToString()
         {
             return $"ForNode(iteratorName=\"{_iteratorName}\", collection={_collection.ToString()}, body={_body.ToString()})";
+        }
+
+        public override string Name()
+        {
+            return "<for>";
         }
     }
 
@@ -3168,7 +3371,7 @@ namespace TemplateInterpreter
                 return _elseBranch.Evaluate(context);
             }
 
-            return new StringValue(string.Empty);
+            return new Value(new StringValue(string.Empty));
         }
 
         public override string ToStackString()
@@ -3185,6 +3388,11 @@ namespace TemplateInterpreter
             string elseStr = _elseBranch != null ? _elseBranch.ToString() : "null";
 
             return $"IfNode(conditionalBranches=[{branchesStr}], elseBranch={elseStr})";
+        }
+
+        public override string Name()
+        {
+            return "<if>";
         }
     }
 
@@ -3204,20 +3412,25 @@ namespace TemplateInterpreter
             var result = new StringBuilder();
             foreach (var child in _children)
             {
-                result.Append(TypeHelper.FormatOutput(child.Evaluate(context).Unbox()));
+                result.Append(child.Evaluate(context).Output());
             }
-            return new StringValue(result.ToString());
+            return new Value(new StringValue(result.ToString()));
+        }
+
+        public override string Name()
+        {
+            return "<template>";
         }
 
         public override string ToStackString()
         {
-            return $"<Template>";
+            return $"<template{(!string.IsNullOrEmpty(Location.Source) ? $" {Location.Source}" : "")}>";
         }
 
         public override string ToString()
         {
             var childrenStr = string.Join(", ", _children.Select(child => child.ToString()));
-            return $"TemplateNode(children=[{childrenStr}])";
+            return $"TemplateNode({(!string.IsNullOrEmpty(Location.Source) ? $"source={Location.Source}" : "")}, children=[{childrenStr}])";
         }
     }
 
@@ -3492,7 +3705,6 @@ namespace TemplateInterpreter
         private AstNode ParseInvocation(AstNode callable)
         {
             var token = Current();
-            string callableName = callable is FunctionReferenceNode funcNode ? funcNode.ToString() : "lambda";
 
             Advance(); // Skip (
             var arguments = new List<AstNode>();
@@ -4376,12 +4588,12 @@ namespace TemplateInterpreter
         {
             Register("typeof",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(Value))
+                    new ParameterDefinition(typeof(Box))
                 },
                 (context, callSite, args) =>
                 {
                     var value = args[0];
-                    return new TypeValue(value.TypeOf());
+                    return new Value(new TypeValue(value.TypeOf()));
                 });
 
             Register("length",
@@ -4390,7 +4602,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var enumerable = (args[0] as ArrayValue).Value();
+                    var enumerable = (args[0].ValueOf() as ArrayValue).Value();
                     if (enumerable == null)
                     {
                         throw new TemplateEvaluationException(
@@ -4398,7 +4610,7 @@ namespace TemplateInterpreter
                             context,
                             callSite);
                     }
-                    return new NumberValue(enumerable.Count());
+                    return new Value(new NumberValue(enumerable.Count()));
                 });
 
             Register("length",
@@ -4407,7 +4619,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value();
+                    var str = (args[0].ValueOf() as StringValue).Value();
                     if (str == null)
                     {
                         throw new TemplateEvaluationException(
@@ -4415,7 +4627,7 @@ namespace TemplateInterpreter
                             context,
                             callSite);
                     }
-                    return new NumberValue(str.Length);
+                    return new Value(new NumberValue(str.Length));
                 });
 
             Register("empty",
@@ -4424,7 +4636,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value();
+                    var str = (args[0].ValueOf() as StringValue).Value();
                     if (str == null)
                     {
                         throw new TemplateEvaluationException(
@@ -4432,7 +4644,7 @@ namespace TemplateInterpreter
                             context,
                             callSite);
                     }
-                    return new BooleanValue(string.IsNullOrEmpty(str));
+                    return new Value(new BooleanValue(string.IsNullOrEmpty(str)));
                 });
 
             Register("concat",
@@ -4442,8 +4654,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var first = (args[0] as ArrayValue).Value();
-                    var second = (args[1] as ArrayValue).Value();
+                    var first = (args[0].ValueOf() as ArrayValue).Value();
+                    var second = (args[1].ValueOf() as ArrayValue).Value();
 
                     if (first == null || second == null)
                     {
@@ -4454,7 +4666,7 @@ namespace TemplateInterpreter
                     }
 
                     // Combine both enumerables into a single list
-                    return new ArrayValue(first.Concat(second));
+                    return new Value(new ArrayValue(first.Concat(second)));
                 });
 
             Register("concat",
@@ -4464,9 +4676,9 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str1 = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var str2 = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new StringValue(str1 + str2);
+                    var str1 = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var str2 = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new StringValue(str1 + str2));
                 });
 
             Register("contains",
@@ -4476,9 +4688,9 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new BooleanValue(str.Contains(searchStr));
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new BooleanValue(str.Contains(searchStr)));
                 });
 
             Register("contains",
@@ -4488,20 +4700,20 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    if (args[0] == null)
+                    if (args[0].ValueOf() == null)
                     {
-                        return new BooleanValue(false);
+                        return new Value(new BooleanValue(false));
                     }
 
-                    var obj = (args[0] as ObjectValue).Value();
-                    var propertyName = (args[1] as StringValue).Value();
+                    var obj = (args[0].ValueOf() as ObjectValue).Value();
+                    var propertyName = (args[1].ValueOf() as StringValue).Value();
 
                     if (string.IsNullOrEmpty(propertyName))
                     {
-                        return new BooleanValue(true);
+                        return new Value(new BooleanValue(true));
                     }
 
-                    return new BooleanValue(obj.ContainsKey(propertyName));
+                    return new Value(new BooleanValue(obj.ContainsKey(propertyName)));
                 });
 
             Register("startsWith",
@@ -4511,9 +4723,9 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new BooleanValue(str.StartsWith(searchStr));
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new BooleanValue(str.StartsWith(searchStr)));
                 });
 
             Register("endsWith",
@@ -4523,9 +4735,9 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new BooleanValue(str.EndsWith(searchStr));
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new BooleanValue(str.EndsWith(searchStr)));
                 });
 
             Register("toUpper",
@@ -4534,8 +4746,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    return new StringValue(str.ToUpper());
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new StringValue(str.ToUpper()));
                 });
 
             Register("toLower",
@@ -4544,8 +4756,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    return new StringValue(str.ToLower());
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new StringValue(str.ToLower()));
                 });
 
             Register("trim",
@@ -4554,8 +4766,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    return new StringValue(str.Trim());
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new StringValue(str.Trim()));
                 });
 
             Register("indexOf",
@@ -4565,9 +4777,9 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new NumberValue(str.IndexOf(searchStr));
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new NumberValue(str.IndexOf(searchStr)));
                 });
 
             Register("lastIndexOf",
@@ -4577,44 +4789,44 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var searchStr = (args[1] as StringValue).Value()?.ToString() ?? "";
-                    return new NumberValue(str.LastIndexOf(searchStr));
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var searchStr = (args[1].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    return new Value(new NumberValue(str.LastIndexOf(searchStr)));
                 });
 
             Register("substring",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(StringValue)),
                     new ParameterDefinition(typeof(NumberValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(-1)) // Optional end index
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(-1))) // Optional end index
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value()?.ToString() ?? "";
-                    var startIndex = Convert.ToInt32((args[1] as NumberValue).Value());
-                    var endIndex = Convert.ToInt32((args[2] as NumberValue).Value());
+                    var str = (args[0].ValueOf() as StringValue).Value()?.ToString() ?? "";
+                    var startIndex = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
+                    var endIndex = Convert.ToInt32((args[2].ValueOf() as NumberValue).Value());
 
                     // If end index is provided, use it; otherwise substring to the end
                     if (endIndex >= 0)
                     {
                         var length = endIndex - startIndex;
-                        return new StringValue(str.Substring(startIndex, length));
+                        return new Value(new StringValue(str.Substring(startIndex, length)));
                     }
 
-                    return new StringValue(str.Substring(startIndex));
+                    return new Value(new StringValue(str.Substring(startIndex)));
                 });
 
             Register("range",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(NumberValue)),
                     new ParameterDefinition(typeof(NumberValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as NumberValue).Value();
-                    var end = (args[1] as NumberValue).Value();
-                    var step = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as NumberValue).Value();
+                    var end = (args[1].ValueOf() as NumberValue).Value();
+                    var step = (args[2].ValueOf() as NumberValue).Value();
 
                     if (step == 0)
                     {
@@ -4624,38 +4836,38 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    var result = new List<NumberValue>();
+                    var result = new List<Value>();
 
                     // Handle both positive and negative step values
                     if (step > 0)
                     {
                         for (var value = start + step - step; value < end; value += step)
                         {
-                            result.Add(new NumberValue(value));
+                            result.Add(new Value(new NumberValue(value)));
                         }
                     }
                     else
                     {
                         for (var value = start + step - step; value > end; value += step)
                         {
-                            result.Add(new NumberValue(value));
+                            result.Add(new Value(new NumberValue(value)));
                         }
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeYear",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4676,32 +4888,32 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
                         current = current.AddYears(step);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeMonth",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4722,16 +4934,16 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
                     var originalDay = current.Day;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
 
                         // Use AddMonths to get the next month
                         var nextMonth = current.AddMonths(step);
@@ -4746,20 +4958,20 @@ namespace TemplateInterpreter
                                               current.Millisecond);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeDay",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4780,32 +4992,32 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
                         current = current.AddDays(step);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeHour",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4826,32 +5038,32 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
                         current = current.AddHours(step);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeMinute",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4872,32 +5084,32 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
                         current = current.AddMinutes(step);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("rangeSecond",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(DateTimeValue)),
                     new ParameterDefinition(typeof(DateTimeValue)),
-                    new ParameterDefinition(typeof(NumberValue), true, new NumberValue(1))
+                    new ParameterDefinition(typeof(NumberValue), true, new Value(new NumberValue(1)))
                 },
                 (context, callSite, args) =>
                 {
-                    var start = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var end = (args[1] as DateTimeValue).Value() as DateTime?;
-                    var stepDecimal = (args[2] as NumberValue).Value();
+                    var start = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var end = (args[1].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var stepDecimal = (args[2].ValueOf() as NumberValue).Value();
                     var step = (int)Math.Floor(stepDecimal);
 
                     if (!start.HasValue || !end.HasValue)
@@ -4918,19 +5130,19 @@ namespace TemplateInterpreter
 
                     if (start >= end)
                     {
-                        return new ArrayValue(new List<DateTimeValue>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    var result = new List<DateTimeValue>();
+                    var result = new List<Value>();
                     var current = start.Value;
 
                     while (current < end)
                     {
-                        result.Add(new DateTimeValue(new DateTime(current.Ticks)));
+                        result.Add(new Value(new DateTimeValue(new DateTime(current.Ticks))));
                         current = current.AddSeconds(step);
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("filter",
@@ -4940,8 +5152,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var collection = (args[0] as ArrayValue).Value();
-                    var predicate = (args[1] as LambdaValue).Value();
+                    var collection = (args[0].ValueOf() as ArrayValue).Value();
+                    var predicate = (args[1].ValueOf() as LambdaValue).Value();
 
                     if (collection == null || predicate == null)
                     {
@@ -4955,7 +5167,7 @@ namespace TemplateInterpreter
                     foreach (var item in collection)
                     {
                         var predicateResult = predicate(context, callSite, new List<Value> { item });
-                        if (predicateResult is BooleanValue boolResult)
+                        if (predicateResult.ValueOf() is BooleanValue boolResult)
                         {
                             if (boolResult.Value())
                             {
@@ -4971,7 +5183,7 @@ namespace TemplateInterpreter
                         }
                     }
 
-                    return new ArrayValue(result);
+                    return new Value(new ArrayValue(result));
                 });
 
             Register("at",
@@ -4981,8 +5193,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var index = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var index = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (array == null)
                     {
@@ -5010,7 +5222,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
                     if (array == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5037,7 +5249,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
                     if (array == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5049,10 +5261,10 @@ namespace TemplateInterpreter
                     var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
                     {
-                        return new ArrayValue(new List<Value>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    return new ArrayValue(list.Skip(1));
+                    return new Value(new ArrayValue(list.Skip(1)));
                 });
 
             Register("last",
@@ -5061,7 +5273,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
                     if (array == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5088,7 +5300,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
                     if (array == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5097,7 +5309,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new BooleanValue(array.Any());
+                    return new Value(new BooleanValue(array.Any()));
                 });
 
             Register("if",
@@ -5108,21 +5320,21 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var condition = args[0] as LazyValue;
-                    var trueBranch = args[1] as LazyValue;
-                    var falseBranch = args[2] as LazyValue;
+                    var condition = args[0].ValueOf() as LazyValue;
+                    var trueBranch = args[1].ValueOf() as LazyValue;
+                    var falseBranch = args[2].ValueOf() as LazyValue;
 
                     var conditionResult = condition.Evaluate();
                     try
                     {
-                        conditionResult.ExpectType(ValueType.Boolean, context);
+                        conditionResult.ExpectType(ValueType.Boolean);
                     }
                     catch (InnerEvaluationException ex)
                     {
                         throw new TemplateEvaluationException(ex.Message, context, callSite);
                     }
 
-                    return (conditionResult as BooleanValue).Value() ?
+                    return (conditionResult.ValueOf() as BooleanValue).Value() ?
                         trueBranch.Evaluate() :
                         falseBranch.Evaluate();
                 },
@@ -5135,8 +5347,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var delimiter = (args[1] as StringValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var delimiter = (args[1].ValueOf() as StringValue).Value();
 
                     if (array == null)
                     {
@@ -5153,8 +5365,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    // TODO: reimplement tostring for all value types and remove FormatOutput
-                    return new StringValue(string.Join(delimiter, array.Select(x => TypeHelper.FormatOutput(x.Unbox() ?? ""))));
+                    return new Value(new StringValue(string.Join(delimiter, array.Select(x => TypeHelper.FormatOutput(x.ValueOf().Unbox() ?? "")))));
                 });
 
             Register("explode",
@@ -5164,8 +5375,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value();
-                    var delimiter = (args[1] as StringValue).Value();
+                    var str = (args[0].ValueOf() as StringValue).Value();
+                    var delimiter = (args[1].ValueOf() as StringValue).Value();
 
                     if (str == null)
                     {
@@ -5182,7 +5393,9 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(str.Split(new[] { delimiter }, StringSplitOptions.None).Select(s => new StringValue(s)).ToList());
+                    return new Value(new ArrayValue(str
+                        .Split(new[] { delimiter }, StringSplitOptions.None)
+                        .Select(s => new Value(new StringValue(s))).ToList()));
                 });
 
             Register("map",
@@ -5192,8 +5405,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var mapper = (args[1] as LambdaValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var mapper = (args[1].ValueOf() as LambdaValue).Value();
 
                     if (array == null || mapper == null)
                     {
@@ -5203,19 +5416,19 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(array.Select(item => mapper(context, callSite, new List<Value> { item })).ToList());
+                    return new Value(new ArrayValue(array.Select(item => mapper(context, callSite, new List<Value> { item })).ToList()));
                 });
 
             Register("reduce",
                 new List<ParameterDefinition> {
                     new ParameterDefinition(typeof(ArrayValue)),
                     new ParameterDefinition(typeof(LambdaValue)),
-                    new ParameterDefinition(typeof(Value))
+                    new ParameterDefinition(typeof(Box))
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var reducer = (args[1] as LambdaValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var reducer = (args[1].ValueOf() as LambdaValue).Value();
                     var initialValue = args[2];
 
                     if (array == null || reducer == null)
@@ -5237,8 +5450,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    int count = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    int count = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (array == null)
                     {
@@ -5250,10 +5463,10 @@ namespace TemplateInterpreter
 
                     if (count <= 0)
                     {
-                        return new ArrayValue(new List<Value>());
+                        return new Value(new ArrayValue(new List<Value>()));
                     }
 
-                    return new ArrayValue(array.Take(count));
+                    return new Value(new ArrayValue(array.Take(count)));
                 });
 
             Register("skip",
@@ -5263,8 +5476,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    int count = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    int count = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (array == null)
                     {
@@ -5274,7 +5487,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(array.Skip(count));
+                    return new Value(new ArrayValue(array.Skip(count)));
                 });
 
             Register("order",
@@ -5283,7 +5496,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
                     if (array == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5292,7 +5505,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(array.OrderBy(x => x.Unbox()).ToList());
+                    return new Value(new ArrayValue(array.OrderBy(x => x.ValueOf().Unbox()).ToList()));
                 });
 
             Register("order",
@@ -5302,8 +5515,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var ascending = (args[1] as BooleanValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var ascending = (args[1].ValueOf() as BooleanValue).Value();
 
                     if (array == null)
                     {
@@ -5313,9 +5526,9 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(ascending ?
-                        array.OrderBy(x => x.Unbox()).ToList() :
-                        array.OrderByDescending(x => x.Unbox()).ToList());
+                    return new Value(new ArrayValue(ascending ?
+                        array.OrderBy(x => x.ValueOf().Unbox()).ToList() :
+                        array.OrderByDescending(x => x.ValueOf().Unbox()).ToList()));
                 });
 
             Register("order",
@@ -5325,8 +5538,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var comparer = (args[1] as LambdaValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var comparer = (args[1].ValueOf() as LambdaValue).Value();
 
                     if (array == null || comparer == null)
                     {
@@ -5338,7 +5551,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)).ToList());
+                        return new Value(new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)).ToList()));
                     }
                     catch (InnerEvaluationException ex)
                     {
@@ -5353,8 +5566,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var array = (args[0] as ArrayValue).Value();
-                    var fieldName = (args[1] as StringValue).Value();
+                    var array = (args[0].ValueOf() as ArrayValue).Value();
+                    var fieldName = (args[1].ValueOf() as StringValue).Value();
 
                     if (array == null)
                     {
@@ -5380,7 +5593,7 @@ namespace TemplateInterpreter
 
                         // Get the group key from the item
                         string key;
-                        if (item.Unbox() is IDictionary<string, Value> dict)
+                        if (item.ValueOf().Unbox() is IDictionary<string, Value> dict)
                         {
                             if (!dict.ContainsKey(fieldName))
                             {
@@ -5392,7 +5605,7 @@ namespace TemplateInterpreter
                             else
                             {
                                 var value = dict[fieldName];
-                                if (value is StringValue str)
+                                if (value.ValueOf() is StringValue str)
                                 {
                                     key = str.Value();
                                 }
@@ -5424,12 +5637,12 @@ namespace TemplateInterpreter
                         // Add item to the appropriate group
                         if (!result.ContainsKey(key))
                         {
-                            result[key] = new ArrayValue(new List<Value>());
+                            result[key] = new Value(new ArrayValue(new List<Value>()));
                         }
-                        result[key].Unbox().Add(item);
+                        result[key].ValueOf().Unbox().Add(item);
                     }
 
-                    return new ObjectValue(result);
+                    return new Value(new ObjectValue(result));
                 });
 
             Register("get",
@@ -5439,8 +5652,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var obj = (args[0] as ObjectValue).Value();
-                    var fieldName = (args[1] as StringValue).Value();
+                    var obj = (args[0].ValueOf() as ObjectValue).Value();
+                    var fieldName = (args[1].ValueOf() as StringValue).Value();
 
                     if (obj == null)
                     {
@@ -5473,7 +5686,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var obj = (args[0] as ObjectValue).Value();
+                    var obj = (args[0].ValueOf() as ObjectValue).Value();
                     if (obj == null)
                     {
                         throw new TemplateEvaluationException(
@@ -5482,7 +5695,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new ArrayValue(obj.Keys.Select(key => new StringValue(key)).ToList());
+                    return new Value(new ArrayValue(obj.Keys.Select(key => new Value(new StringValue(key))).ToList()));
                 });
 
             Register("mod",
@@ -5492,8 +5705,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number1 = Convert.ToInt32((args[0] as NumberValue).Value());
-                    var number2 = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var number1 = Convert.ToInt32((args[0].ValueOf() as NumberValue).Value());
+                    var number2 = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (number2 == 0)
                     {
@@ -5503,7 +5716,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new NumberValue(number1 % number2);
+                    return new Value(new NumberValue(number1 % number2));
                 });
 
             Register("floor",
@@ -5512,8 +5725,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number = (args[0] as NumberValue).Value();
-                    return new NumberValue(Math.Floor(number));
+                    var number = (args[0].ValueOf() as NumberValue).Value();
+                    return new Value(new NumberValue(Math.Floor(number)));
                 });
 
             Register("ceil",
@@ -5522,8 +5735,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number = (args[0] as NumberValue).Value();
-                    return new NumberValue(Math.Ceiling(number));
+                    var number = (args[0].ValueOf() as NumberValue).Value();
+                    return new Value(new NumberValue(Math.Ceiling(number)));
                 });
 
             Register("round",
@@ -5532,8 +5745,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number = (args[0] as NumberValue).Value();
-                    return new NumberValue(Math.Round(number, 0));
+                    var number = (args[0].ValueOf() as NumberValue).Value();
+                    return new Value(new NumberValue(Math.Round(number, 0)));
                 });
 
             Register("round",
@@ -5543,8 +5756,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number = (args[0] as NumberValue).Value();
-                    var decimals = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var number = (args[0].ValueOf() as NumberValue).Value();
+                    var decimals = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (decimals < 0)
                     {
@@ -5554,7 +5767,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new NumberValue(Math.Round(number, decimals));
+                    return new Value(new NumberValue(Math.Round(number, decimals)));
                 });
 
             Register("string",
@@ -5563,8 +5776,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var number = (args[0] as NumberValue).Value();
-                    return new StringValue(number.ToString());
+                    var number = (args[0].ValueOf() as NumberValue).Value();
+                    return new Value(new StringValue(number.ToString()));
                 });
 
             Register("string",
@@ -5573,8 +5786,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var boolean = (args[0] as BooleanValue).Value();
-                    return new StringValue(boolean.ToString().ToLower()); // returning "true" or "false" in lowercase
+                    var boolean = (args[0].ValueOf() as BooleanValue).Value();
+                    return new Value(new StringValue(boolean.ToString().ToLower())); // returning "true" or "false" in lowercase
                 });
 
             Register("number",
@@ -5583,7 +5796,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value();
+                    var str = (args[0].ValueOf() as StringValue).Value();
 
                     if (string.IsNullOrEmpty(str))
                     {
@@ -5601,7 +5814,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new NumberValue(result);
+                    return new Value(new NumberValue(result));
                 });
 
             Register("numeric",
@@ -5610,14 +5823,14 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var str = (args[0] as StringValue).Value();
+                    var str = (args[0].ValueOf() as StringValue).Value();
 
                     if (string.IsNullOrEmpty(str))
                     {
-                        return new BooleanValue(false);
+                        return new Value(new BooleanValue(false));
                     }
 
-                    return new BooleanValue(decimal.TryParse(str, out _));
+                    return new Value(new BooleanValue(decimal.TryParse(str, out _)));
                 });
 
             Register("datetime",
@@ -5626,7 +5839,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var dateStr = (args[0] as StringValue).Value();
+                    var dateStr = (args[0].ValueOf() as StringValue).Value();
                     if (string.IsNullOrEmpty(dateStr))
                     {
                         throw new TemplateEvaluationException(
@@ -5637,7 +5850,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(DateTime.Parse(dateStr));
+                        return new Value(new DateTimeValue(DateTime.Parse(dateStr)));
                     }
                     catch (Exception ex)
                     {
@@ -5655,8 +5868,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var format = (args[1] as StringValue).Value();
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var format = (args[1].ValueOf() as StringValue).Value();
 
                     if (!date.HasValue)
                     {
@@ -5676,7 +5889,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new StringValue(date.Value.ToString(format));
+                        return new Value(new StringValue(date.Value.ToString(format)));
                     }
                     catch (Exception ex)
                     {
@@ -5694,8 +5907,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var years = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var years = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5707,7 +5920,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddYears(years));
+                        return new Value(new DateTimeValue(date.Value.AddYears(years)));
                     }
                     catch (Exception ex)
                     {
@@ -5725,8 +5938,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var months = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var months = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5738,7 +5951,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddMonths(months));
+                        return new Value(new DateTimeValue(date.Value.AddMonths(months)));
                     }
                     catch (Exception ex)
                     {
@@ -5756,8 +5969,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var days = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var days = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5769,7 +5982,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddDays(days));
+                        return new Value(new DateTimeValue(date.Value.AddDays(days)));
                     }
                     catch (Exception ex)
                     {
@@ -5787,8 +6000,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var hours = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var hours = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5800,7 +6013,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddHours(hours));
+                        return new Value(new DateTimeValue(date.Value.AddHours(hours)));
                     }
                     catch (Exception ex)
                     {
@@ -5818,8 +6031,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var minutes = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var minutes = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5831,7 +6044,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddMinutes(minutes));
+                        return new Value(new DateTimeValue(date.Value.AddMinutes(minutes)));
                     }
                     catch (Exception ex)
                     {
@@ -5849,8 +6062,8 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var date = (args[0] as DateTimeValue).Value() as DateTime?;
-                    var seconds = Convert.ToInt32((args[1] as NumberValue).Value());
+                    var date = (args[0].ValueOf() as DateTimeValue).Value() as DateTime?;
+                    var seconds = Convert.ToInt32((args[1].ValueOf() as NumberValue).Value());
 
                     if (!date.HasValue)
                     {
@@ -5862,7 +6075,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        return new DateTimeValue(date.Value.AddSeconds(seconds));
+                        return new Value(new DateTimeValue(date.Value.AddSeconds(seconds)));
                     }
                     catch (Exception ex)
                     {
@@ -5877,14 +6090,14 @@ namespace TemplateInterpreter
                 new List<ParameterDefinition>(),
                 (context, callSite, args) =>
                 {
-                    return new DateTimeValue(DateTime.Now);
+                    return new Value(new DateTimeValue(DateTime.Now));
                 });
 
             Register("utcNow",
                 new List<ParameterDefinition>(),
                 (context, callSite, args) =>
                 {
-                    return new DateTimeValue(DateTime.UtcNow);
+                    return new Value(new DateTimeValue(DateTime.UtcNow));
                 });
 
             Register("uri",
@@ -5893,7 +6106,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var uriString = (args[0] as StringValue).Value();
+                    var uriString = (args[0].ValueOf() as StringValue).Value();
                     if (string.IsNullOrEmpty(uriString))
                     {
                         throw new TemplateEvaluationException(
@@ -5906,28 +6119,28 @@ namespace TemplateInterpreter
                     {
                         var uri = new Uri(uriString);
                         var dict = new Dictionary<string, Value>();
-                        dict["AbsolutePath"] = new StringValue(uri.AbsolutePath);
-                        dict["AbsoluteUri"] = new StringValue(uri.AbsoluteUri);
-                        dict["DnsSafeHost"] = new StringValue(uri.DnsSafeHost);
-                        dict["Fragment"] = new StringValue(uri.Fragment);
-                        dict["Host"] = new StringValue(uri.Host);
-                        dict["HostNameType"] = new StringValue(uri.HostNameType.ToString());
-                        dict["IdnHost"] = new StringValue(uri.IdnHost);
-                        dict["IsAbsoluteUri"] = new BooleanValue(uri.IsAbsoluteUri);
-                        dict["IsDefaultPort"] = new BooleanValue(uri.IsDefaultPort);
-                        dict["IsFile"] = new BooleanValue(uri.IsFile);
-                        dict["IsLoopback"] = new BooleanValue(uri.IsLoopback);
-                        dict["IsUnc"] = new BooleanValue(uri.IsUnc);
-                        dict["LocalPath"] = new StringValue(uri.LocalPath);
-                        dict["OriginalString"] = new StringValue(uri.OriginalString);
-                        dict["PathAndQuery"] = new StringValue(uri.PathAndQuery);
-                        dict["Port"] = new NumberValue(uri.Port);
-                        dict["Query"] = new StringValue(uri.Query);
-                        dict["Scheme"] = new StringValue(uri.Scheme);
-                        dict["Segments"] = new ArrayValue(uri.Segments.Select(s => new StringValue(s)).ToList());
-                        dict["UserEscaped"] = new BooleanValue(uri.UserEscaped);
-                        dict["UserInfo"] = new StringValue(uri.UserInfo);
-                        return new ObjectValue(dict);
+                        dict["AbsolutePath"] = new Value(new StringValue(uri.AbsolutePath));
+                        dict["AbsoluteUri"] = new Value(new StringValue(uri.AbsoluteUri));
+                        dict["DnsSafeHost"] = new Value(new StringValue(uri.DnsSafeHost));
+                        dict["Fragment"] = new Value(new StringValue(uri.Fragment));
+                        dict["Host"] = new Value(new StringValue(uri.Host));
+                        dict["HostNameType"] = new Value(new StringValue(uri.HostNameType.ToString()));
+                        dict["IdnHost"] = new Value(new StringValue(uri.IdnHost));
+                        dict["IsAbsoluteUri"] = new Value(new BooleanValue(uri.IsAbsoluteUri));
+                        dict["IsDefaultPort"] = new Value(new BooleanValue(uri.IsDefaultPort));
+                        dict["IsFile"] = new Value(new BooleanValue(uri.IsFile));
+                        dict["IsLoopback"] = new Value(new BooleanValue(uri.IsLoopback));
+                        dict["IsUnc"] = new Value(new BooleanValue(uri.IsUnc));
+                        dict["LocalPath"] = new Value(new StringValue(uri.LocalPath));
+                        dict["OriginalString"] = new Value(new StringValue(uri.OriginalString));
+                        dict["PathAndQuery"] = new Value(new StringValue(uri.PathAndQuery));
+                        dict["Port"] = new Value(new NumberValue(uri.Port));
+                        dict["Query"] = new Value(new StringValue(uri.Query));
+                        dict["Scheme"] = new Value(new StringValue(uri.Scheme));
+                        dict["Segments"] = new Value(new ArrayValue(uri.Segments.Select(s => new Value(new StringValue(s))).ToList()));
+                        dict["UserEscaped"] = new Value(new BooleanValue(uri.UserEscaped));
+                        dict["UserInfo"] = new Value(new StringValue(uri.UserInfo));
+                        return new Value(new ObjectValue(dict));
                     }
                     catch (Exception ex)
                     {
@@ -5944,11 +6157,11 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var html = (args[0] as StringValue).Value();
+                    var html = (args[0].ValueOf() as StringValue).Value();
 
                     try
                     {
-                        return new StringValue(WebUtility.HtmlEncode(html));
+                        return new Value(new StringValue(WebUtility.HtmlEncode(html)));
                     }
                     catch (Exception ex)
                     {
@@ -5965,11 +6178,11 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var html = (args[0] as StringValue).Value();
+                    var html = (args[0].ValueOf() as StringValue).Value();
 
                     try
                     {
-                        return new StringValue(WebUtility.HtmlDecode(html));
+                        return new Value(new StringValue(WebUtility.HtmlDecode(html)));
                     }
                     catch (Exception ex)
                     {
@@ -5986,11 +6199,11 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var url = (args[0] as StringValue).Value();
+                    var url = (args[0].ValueOf() as StringValue).Value();
 
                     try
                     {
-                        return new StringValue(WebUtility.UrlEncode(url));
+                        return new Value(new StringValue(WebUtility.UrlEncode(url)));
                     }
                     catch (Exception ex)
                     {
@@ -6007,11 +6220,11 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var url = (args[0] as StringValue).Value();
+                    var url = (args[0].ValueOf() as StringValue).Value();
 
                     try
                     {
-                        return new StringValue(WebUtility.UrlDecode(url));
+                        return new Value(new StringValue(WebUtility.UrlDecode(url)));
                     }
                     catch (Exception ex)
                     {
@@ -6028,7 +6241,7 @@ namespace TemplateInterpreter
                 },
                 (context, callSite, args) =>
                 {
-                    var jsonString = (args[0] as StringValue).Value();
+                    var jsonString = (args[0].ValueOf() as StringValue).Value();
                     if (string.IsNullOrEmpty(jsonString))
                     {
                         throw new TemplateEvaluationException("fromJson function requires a non-empty string argument",
@@ -6059,13 +6272,13 @@ namespace TemplateInterpreter
 
             Register("toJson",
                 new List<ParameterDefinition> {
-                    new ParameterDefinition(typeof(Value)),
-                    new ParameterDefinition(typeof(BooleanValue), true, new BooleanValue(false))
+                    new ParameterDefinition(typeof(Box)),
+                    new ParameterDefinition(typeof(BooleanValue), true, new Value(new BooleanValue(false)))
                 },
                 (context, callSite, args) =>
                 {
                     var obj = args[0];
-                    var formatted = (args[1] as BooleanValue).Value();
+                    var formatted = (args[1].ValueOf() as BooleanValue).Value();
 
                     if (obj == null)
                     {
@@ -6081,10 +6294,10 @@ namespace TemplateInterpreter
 
                         if (formatted)
                         {
-                            return new StringValue(FormatJson(json));
+                            return new Value(new StringValue(FormatJson(json)));
                         }
 
-                        return new StringValue(json);
+                        return new Value(new StringValue(json));
                     }
                     catch (Exception ex)
                     {
@@ -6100,7 +6313,7 @@ namespace TemplateInterpreter
         {
             var serializer = new JavaScriptSerializer();
             var deserializedObject = serializer.Deserialize<object>(jsonString);
-            return ConvertToDictionary(deserializedObject) as Value;
+            return ConvertToDictionary(deserializedObject);
         }
 
         private Value ConvertToDictionary(object obj)
@@ -6122,45 +6335,45 @@ namespace TemplateInterpreter
                         newDict[kvp.Key] = convertedValue;
                     }
                 }
-                return new ObjectValue(newDict);
+                return new Value(new ObjectValue(newDict));
             }
 
             // Handle array
             if (obj is System.Collections.ArrayList arrayList)
             {
-                return new ArrayValue(arrayList.Cast<object>()
+                return new Value(new ArrayValue(arrayList.Cast<object>()
                                .Select(item => ConvertToDictionary(item))
                                .Where(item => item != null)
-                               .ToList());  // Filter out null values
+                               .ToList()));  // Filter out null values
             }
 
             if (obj is object[] array)
             {
-                return new ArrayValue(array.Cast<object>()
+                return new Value(new ArrayValue(array.Cast<object>()
                                .Select(item => ConvertToDictionary(item))
                                .Where(item => item != null)
-                               .ToList());  // Filter out null values
+                               .ToList()));  // Filter out null values
             }
 
             // Handle numbers - convert to decimal where possible
             if (TypeHelper.IsConvertibleToDecimal(obj))
             {
-                return new NumberValue(Convert.ToDecimal(obj));
+                return new Value(new NumberValue(Convert.ToDecimal(obj)));
             }
 
             if (obj is string str)
             {
-                return new StringValue(str);
+                return new Value(new StringValue(str));
             }
 
             if (obj is bool boolean)
             {
-                return new BooleanValue(boolean);
+                return new Value(new BooleanValue(boolean));
             }
 
             if (obj is DateTime dateTime)
             {
-                return new DateTimeValue(dateTime);
+                return new Value(new DateTimeValue(dateTime));
             }
 
             // Return other primitives as-is (string, bool)
@@ -6384,7 +6597,7 @@ namespace TemplateInterpreter
                     continue;
                 }
 
-                var argType = arg.GetType();
+                var argType = arg.ValueOf().GetType();
 
                 // Exact type match
                 if (paramType == argType)
@@ -6394,9 +6607,9 @@ namespace TemplateInterpreter
                 }
 
                 // Special handling for IEnumerable
-                if (paramType == typeof(System.Collections.IEnumerable))
+                if (paramType == typeof(ArrayValue))
                 {
-                    if (arg is System.Collections.IEnumerable)
+                    if (arg.ValueOf() is ArrayValue)
                     {
                         totalScore += 2;
                         continue;
@@ -6431,7 +6644,7 @@ namespace TemplateInterpreter
                 var parameter = function.Parameters[i];
 
                 // Special handling for LazyValue
-                if (parameter.Type == typeof(LazyValue) && argument is LazyValue)
+                if (parameter.Type == typeof(LazyValue) && argument.ValueOf() is LazyValue)
                 {
                     continue;
                 }
@@ -6446,12 +6659,12 @@ namespace TemplateInterpreter
                     continue;
                 }
 
-                var argumentType = argument.GetType();
+                var argumentType = argument.ValueOf().GetType();
 
                 // Special handling for IEnumerable parameter type
                 if (parameter.Type == typeof(ArrayValue))
                 {
-                    if (!(argument is ArrayValue))
+                    if (!(argument.ValueOf() is ArrayValue))
                     {
                         throw new InnerEvaluationException($"Argument {i + 1} of function '{function.Name}' must be an array");
                     }
@@ -6472,7 +6685,7 @@ namespace TemplateInterpreter
     {
         public static bool UnboxBoolean(Value value, ExecutionContext context, AstNode astNode)
         {
-            if (value is BooleanValue booleanValue)
+            if (value.ValueOf() is BooleanValue booleanValue)
             {
                 return booleanValue.Value();
             }
@@ -6487,7 +6700,7 @@ namespace TemplateInterpreter
 
         public static decimal UnboxNumber(Value value, ExecutionContext context, AstNode astNode)
         {
-            if (value is NumberValue booleanValue)
+            if (value.ValueOf() is NumberValue booleanValue)
             {
                 return booleanValue.Value();
             }
@@ -6533,7 +6746,7 @@ namespace TemplateInterpreter
             else if (evaluated is IDictionary<string, Value> dict)
             {
                 return string.Concat("{",
-                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key].Unbox(), true)))), "}");
+                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key].ValueOf().Unbox(), true)))), "}");
             }
             else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
             {
@@ -6547,56 +6760,56 @@ namespace TemplateInterpreter
 
         public static string FormatArrayOutput(IEnumerable<Value> array)
         {
-            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item.Unbox(), true))), "]");
+            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item.ValueOf().Unbox(), true))), "]");
         }
 
         public static string JsonSerialize(Value value)
         {
-            if (value is NumberValue numberValue)
+            if (value.ValueOf() is NumberValue numberValue)
             {
                 return numberValue.Value().ToString();
             }
-            else if (value is DateTimeValue dateTimeValue)
+            else if (value.ValueOf() is DateTimeValue dateTimeValue)
             {
                 return $"\"{dateTimeValue.Value().ToString("o")}\""; // ISO 8601 format
             }
-            else if (value is BooleanValue booleanValue)
+            else if (value.ValueOf() is BooleanValue booleanValue)
             {
                 return booleanValue.Value() ? "true" : "false";
             }
-            else if (value is LambdaValue lambdaValue)
+            else if (value.ValueOf() is LambdaValue lambdaValue)
             {
                 return $"\"func<lambda({string.Join(", ", lambdaValue.ParameterNames)})>\"";
             }
-            else if (value is FunctionReferenceValue funcRefValue)
+            else if (value.ValueOf() is FunctionReferenceValue funcRefValue)
             {
                 return $"\"func<{funcRefValue.Name}>\"";
             }
-            else if (value is LazyValue)
+            else if (value.ValueOf() is LazyValue)
             {
                 return "\"value<lazy>\"";
             }
-            else if (value is TypeValue typeValue)
+            else if (value.ValueOf() is TypeValue typeValue)
             {
                 return $"\"type<{typeValue.Value().ToString()}>\"";
             }
-            else if (value is ObjectValue obj)
+            else if (value.ValueOf() is ObjectValue obj)
             {
                 var dict = obj.Value();
                 return string.Concat("{",
                     string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
             }
-            else if (value is ArrayValue arrayValue)
+            else if (value.ValueOf() is ArrayValue arrayValue)
             {
                 return string.Concat("[", string.Join(",", arrayValue.Value().Select(item => JsonSerialize(item))), "]");
             }
-            else if (value is StringValue stringValue)
+            else if (value.ValueOf() is StringValue stringValue)
             {
                 return new JavaScriptSerializer().Serialize(stringValue.Value());
             }
             else
             {
-                return $"\"{value.Unbox().ToString()}\"";
+                return $"\"{value.ValueOf().Unbox().ToString()}\"";
             }
         }
 
@@ -6643,7 +6856,7 @@ namespace TemplateInterpreter
         public int Compare(Value x, Value y)
         {
             var comparison = _comparer(_context, _callSite, new List<Value> { x, y });
-            if (comparison is NumberValue diff)
+            if (comparison.ValueOf() is NumberValue diff)
             {
                 return Math.Sign(diff.Value());
             }
@@ -6686,7 +6899,7 @@ namespace TemplateInterpreter
 
     public interface IDataverseService
     {
-        ArrayValue RetrieveMultiple(string fetchXml);
+        Value RetrieveMultiple(string fetchXml);
     }
 
     public class DataverseService : IDataverseService
@@ -6698,16 +6911,16 @@ namespace TemplateInterpreter
             _organizationService = organizationService ?? throw new ArgumentNullException(nameof(organizationService));
         }
 
-        public ArrayValue RetrieveMultiple(string fetchXml)
+        public Value RetrieveMultiple(string fetchXml)
         {
             var fetch = new FetchExpression(fetchXml);
             var results = _organizationService.RetrieveMultiple(fetch);
             return ConvertToObjects(results);
         }
 
-        private ArrayValue ConvertToObjects(EntityCollection entityCollection)
+        private Value ConvertToObjects(EntityCollection entityCollection)
         {
-            var dicts = new List<ObjectValue>();
+            var dicts = new List<Value>();
 
             foreach (var entity in entityCollection.Entities)
             {
@@ -6727,10 +6940,10 @@ namespace TemplateInterpreter
                     }
                 }
 
-                dicts.Add(new ObjectValue(dict));
+                dicts.Add(new Value(new ObjectValue(dict)));
             }
 
-            return new ArrayValue(dicts);
+            return new Value(new ArrayValue(dicts));
         }
 
         private Value ConvertAttributeValue(object attributeValue)
@@ -6740,33 +6953,33 @@ namespace TemplateInterpreter
             switch (attributeValue)
             {
                 case EntityReference entityRef:
-                    return new StringValue(entityRef.Id.ToString());
+                    return new Value(new StringValue(entityRef.Id.ToString()));
 
                 case Guid guid:
-                    return new StringValue(guid.ToString());
+                    return new Value(new StringValue(guid.ToString()));
 
                 case OptionSetValue optionSet:
-                    return new NumberValue(Convert.ToDecimal(optionSet.Value));
+                    return new Value(new NumberValue(Convert.ToDecimal(optionSet.Value)));
 
                 case Money money:
-                    return new NumberValue(money.Value);
+                    return new Value(new NumberValue(money.Value));
 
                 case AliasedValue aliased:
                     return ConvertAttributeValue(aliased.Value);
 
                 case string str:
-                    return new StringValue(str);
+                    return new Value(new StringValue(str));
 
                 case bool boolean:
-                    return new BooleanValue(boolean);
+                    return new Value(new BooleanValue(boolean));
 
                 case DateTime dateTime:
-                    return new DateTimeValue(dateTime);
+                    return new Value(new DateTimeValue(dateTime));
 
                 default:
                     if (TypeHelper.IsConvertibleToDecimal(attributeValue))
                     {
-                        return new NumberValue(Convert.ToDecimal(attributeValue));
+                        return new Value(new NumberValue(Convert.ToDecimal(attributeValue)));
                     }
 
                     throw new Exception($"Unable to convert value to known datatype: {attributeValue}");
