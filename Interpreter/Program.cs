@@ -294,7 +294,7 @@ namespace TemplateInterpreter
 
         public override string Output()
         {
-            IDictionary<string, Value> dict = (IDictionary<string, Value>) _value;
+            IDictionary<string, Value> dict = (IDictionary<string, Value>)_value;
             return string.Concat("{",
                 string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", (dict[key].Output())))), "}");
         }
@@ -1191,6 +1191,14 @@ namespace TemplateInterpreter
         public SourceLocation Location { get; }
 
         public string Descriptor { get; }
+
+        public IList<TemplateParsingException> InnerExceptions { get; }
+
+        public TemplateParsingException()
+            : base("Errors were encountered while parsing. See inner exceptions for details") 
+        {
+            InnerExceptions = new List<TemplateParsingException>();
+        }
 
         public TemplateParsingException(string message, SourceLocation location)
             : base($"Error at {location}: {message}")
@@ -3522,99 +3530,117 @@ namespace TemplateInterpreter
         {
             var nodes = new List<AstNode>();
             var startLocation = _tokens[0]?.Location;
+            TemplateParsingException parentException = new TemplateParsingException();
 
             while (_position < _tokens.Count)
             {
-                var token = Current();
+                try
+                {
+                    var token = Current();
 
-                if (token.Type == TokenType.Text)
-                {
-                    nodes.Add(new TextNode(token.Value, token.Location));
-                    Advance();
-                }
-                else if (token.Type == TokenType.Whitespace)
-                {
-                    if (CheckSkipWhitespace())
+                    if (token.Type == TokenType.Text)
                     {
+                        nodes.Add(new TextNode(token.Value, token.Location));
                         Advance();
                     }
-                    else
+                    else if (token.Type == TokenType.Whitespace)
                     {
-                        nodes.Add(new WhitespaceNode(token.Value, token.Location));
-                        Advance();
-                    }
-                }
-                else if (token.Type == TokenType.Newline)
-                {
-                    if (CheckSkipNewline())
-                    {
-                        Advance();
-                    }
-                    else
-                    {
-                        nodes.Add(new NewlineNode(token.Value, token.Location));
-                        Advance();
-                    }
-                }
-                else if (token.Type == TokenType.DirectiveStart)
-                {
-                    // Look at the next token to determine what kind of directive we're dealing with
-                    var nextToken = _tokens[_position + 1];
-
-                    if (nextToken.Type == TokenType.CommentStart)
-                    {
-                        ParseComment();
-                    }
-                    else if (nextToken.Type == TokenType.Let)
-                    {
-                        nodes.Add(ParseLetStatement());
-                    }
-                    else if (nextToken.Type == TokenType.Mutation)
-                    {
-                        nodes.Add(ParseMutationStatement());
-                    }
-                    else if (nextToken.Type == TokenType.Capture)
-                    {
-                        nodes.Add(ParseCaptureStatement());
-                    }
-                    else if (nextToken.Type == TokenType.Literal)
-                    {
-                        nodes.Add(ParseLiteralStatement());
-                    }
-                    else if (nextToken.Type == TokenType.Include)
-                    {
-                        nodes.Add(ParseIncludeStatement());
-                    }
-                    else if (nextToken.Type == TokenType.If)
-                    {
-                        nodes.Add(ParseIfStatement());
-                    }
-                    else if (nextToken.Type == TokenType.For)
-                    {
-                        nodes.Add(ParseForStatement());
-                    }
-                    else if (nextToken.Type == TokenType.ElseIf ||
-                             nextToken.Type == TokenType.Else ||
-                             nextToken.Type == TokenType.EndIf ||
-                             nextToken.Type == TokenType.EndFor ||
-                             nextToken.Type == TokenType.EndCapture)
-                    {
-                        if (_position == 0)
+                        if (CheckSkipWhitespace())
                         {
-                            throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
+                            Advance();
                         }
-                        // We've hit a closing directive - return control to the parent parser
-                        break;
+                        else
+                        {
+                            nodes.Add(new WhitespaceNode(token.Value, token.Location));
+                            Advance();
+                        }
+                    }
+                    else if (token.Type == TokenType.Newline)
+                    {
+                        if (CheckSkipNewline())
+                        {
+                            Advance();
+                        }
+                        else
+                        {
+                            nodes.Add(new NewlineNode(token.Value, token.Location));
+                            Advance();
+                        }
+                    }
+                    else if (token.Type == TokenType.DirectiveStart)
+                    {
+                        // Look at the next token to determine what kind of directive we're dealing with
+                        var nextToken = _tokens[_position + 1];
+
+                        if (nextToken.Type == TokenType.CommentStart)
+                        {
+                            ParseComment();
+                        }
+                        else if (nextToken.Type == TokenType.Let)
+                        {
+                            nodes.Add(ParseLetStatement());
+                        }
+                        else if (nextToken.Type == TokenType.Mutation)
+                        {
+                            nodes.Add(ParseMutationStatement());
+                        }
+                        else if (nextToken.Type == TokenType.Capture)
+                        {
+                            nodes.Add(ParseCaptureStatement());
+                        }
+                        else if (nextToken.Type == TokenType.Literal)
+                        {
+                            nodes.Add(ParseLiteralStatement());
+                        }
+                        else if (nextToken.Type == TokenType.Include)
+                        {
+                            nodes.Add(ParseIncludeStatement());
+                        }
+                        else if (nextToken.Type == TokenType.If)
+                        {
+                            nodes.Add(ParseIfStatement());
+                        }
+                        else if (nextToken.Type == TokenType.For)
+                        {
+                            nodes.Add(ParseForStatement());
+                        }
+                        else if (nextToken.Type == TokenType.ElseIf ||
+                                 nextToken.Type == TokenType.Else ||
+                                 nextToken.Type == TokenType.EndIf ||
+                                 nextToken.Type == TokenType.EndFor ||
+                                 nextToken.Type == TokenType.EndCapture)
+                        {
+                            if (_position == 0)
+                            {
+                                throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
+                            }
+                            // We've hit a closing directive - return control to the parent parser
+                            break;
+                        }
+                        else
+                        {
+                            nodes.Add(ParseExpressionStatement());
+                        }
                     }
                     else
                     {
-                        nodes.Add(ParseExpressionStatement());
+                        throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
                     }
                 }
-                else
+                catch (TemplateParsingException e)
                 {
-                    throw new TemplateParsingException($"Unexpected token: {token.Type}", token.Location);
+                    parentException.InnerExceptions.Add(e);
+                    do
+                    {
+                        Advance();
+                    }
+                    while (_position < _tokens.Count && Current().Type != TokenType.DirectiveStart);
                 }
+            }
+
+            if (parentException.InnerExceptions.Any())
+            {
+                throw parentException;
             }
 
             return new TemplateNode(nodes, startLocation ?? null);
@@ -4398,8 +4424,7 @@ namespace TemplateInterpreter
                     break;
 
                 default:
-                    string expectedTokens = "LeftBracket, ObjectStart, LeftParen, Function, Variable, String, Number, True, or False";
-                    throw new TemplateParsingException($"Unexpected token: {token.Type}. Expected one of: {expectedTokens}", token.Location);
+                    throw new TemplateParsingException($"Expected an expression but found {token.Type}", token.Location);
             }
 
             // Handle any invocations that follow the primary expression

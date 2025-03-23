@@ -3956,7 +3956,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.Message);
+            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -3971,7 +3971,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unexpected end of template: the template is incomplete or contains a syntax error", exception.Message);
+            StringAssert.Contains("Unexpected end of template: the template is incomplete or contains a syntax error", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -3986,7 +3986,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected 'in' keyword", exception.Message);
+            StringAssert.Contains("Expected 'in' keyword", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4001,7 +4001,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected comma between function arguments", exception.Message);
+            StringAssert.Contains("Expected comma between function arguments", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4016,7 +4016,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unclosed object literal", exception.Message);
+            StringAssert.Contains("Unclosed object literal", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4031,7 +4031,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected ':'", exception.Message);
+            StringAssert.Contains("Expected ':'", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4046,7 +4046,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Duplicate field name", exception.Message);
+            StringAssert.Contains("Duplicate field name", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4061,7 +4061,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected <rightparen> but got <variable>", exception.Message);
+            StringAssert.Contains("Expected <rightparen> but got <variable>", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4076,7 +4076,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Duplicate parameter name", exception.Message);
+            StringAssert.Contains("Duplicate parameter name", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4091,7 +4091,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected comma", exception.Message);
+            StringAssert.Contains("Expected comma", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4106,7 +4106,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unexpected token", exception.Message);
+            StringAssert.Contains("Expected an expression", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4121,7 +4121,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unexpected end of template", exception.Message);
+            StringAssert.Contains("Unexpected end of template", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4136,7 +4136,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Expected <variable>", exception.Message);
+            StringAssert.Contains("Expected <variable>", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4179,7 +4179,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
             
-            StringAssert.Contains("Unexpected token", exception.Message);
+            StringAssert.Contains("Expected an expression", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4234,7 +4234,7 @@ string";
                 _interpreter.Interpret(template, data);
             });
 
-            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.Message);
+            StringAssert.Contains("Unclosed if statement: Missing {{/if}} directive", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4281,7 +4281,7 @@ string";
                 _interpreter.Parser.Parse(tokens);
             });
 
-            StringAssert.Contains("Expected comma between function arguments or a closing parenthesis", exception.Message);
+            StringAssert.Contains("Expected comma between function arguments or a closing parenthesis", exception.InnerExceptions[0].Message);
         }
 
         [Test]
@@ -4300,7 +4300,7 @@ string";
             });
 
             // Assert message contains expected error indication
-            Assert.That(exception.Message, Does.Contain("Unexpected end"));
+            Assert.That(exception.InnerExceptions[0].Message, Does.Contain("Unexpected end"));
         }
 
         [Test]
@@ -4949,6 +4949,23 @@ string";
 
             // Assert
             Assert.That(result, Is.EqualTo("1"));
+        }
+
+        [Test]
+        public void AllParsingExceptionsThrown()
+        {
+            // Arrange
+            string template = @"{{ let x =  }}{{ mu y = 10 }}{{ nonexistent(3 }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateParsingException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            Assert.That(exception.InnerExceptions.Count, Is.EqualTo(3));
+            StringAssert.Contains("Expected an expression but found DirectiveEnd", exception.InnerExceptions[0].Message);
+            StringAssert.Contains("Expected <directiveend> but got <variable>", exception.InnerExceptions[1].Message);
+            StringAssert.Contains("Expected comma between function arguments or a closing parenthesis: Expected <comma> but got <directiveend>", exception.InnerExceptions[2].Message);
         }
     }
 }
