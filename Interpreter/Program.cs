@@ -65,6 +65,11 @@ namespace TemplateInterpreter
             return _box.Output();
         }
 
+        public string JsonSerialize()
+        {
+            return _box.JsonSerialize();
+        }
+
         public bool ExpectType(ValueType type)
         {
             if (_box.TypeOf() == type)
@@ -105,6 +110,8 @@ namespace TemplateInterpreter
         }
 
         public abstract string Output();
+
+        public abstract string JsonSerialize();
     }
 
     public static class ValueFactory
@@ -189,6 +196,11 @@ namespace TemplateInterpreter
         {
             throw new NotImplementedException();
         }
+
+        public override string JsonSerialize()
+        {
+            return $"\"func<{Name}>\"";
+        }
     }
 
     public class StringValue : Box
@@ -204,6 +216,11 @@ namespace TemplateInterpreter
         {
             return _value as string;
         }
+
+        public override string JsonSerialize()
+        {
+            return new JavaScriptSerializer().Serialize((string)_value);
+        }
     }
 
     public class NumberValue : Box
@@ -216,6 +233,11 @@ namespace TemplateInterpreter
         }
 
         public override string Output()
+        {
+            return ((decimal)_value).ToString();
+        }
+
+        public override string JsonSerialize()
         {
             return ((decimal)_value).ToString();
         }
@@ -234,6 +256,11 @@ namespace TemplateInterpreter
         {
             return _value;
         }
+
+        public override string JsonSerialize()
+        {
+            return (bool)_value ? "true" : "false";
+        }
     }
 
     public class DateTimeValue : Box
@@ -248,6 +275,11 @@ namespace TemplateInterpreter
         public DateTime Value()
         {
             return _value;
+        }
+
+        public override string JsonSerialize()
+        {
+            return $"\"{_value.ToString("o")}\""; // ISO 8601 format
         }
     }
 
@@ -266,6 +298,13 @@ namespace TemplateInterpreter
             return string.Concat("{",
                 string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", (dict[key].Output())))), "}");
         }
+
+        public override string JsonSerialize()
+        {
+            var dict = (IDictionary<string, Value>)_value;
+            return string.Concat("{",
+                string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", dict[key].JsonSerialize()))), "}");
+        }
     }
 
     public class ArrayValue : Box
@@ -281,6 +320,12 @@ namespace TemplateInterpreter
         {
             IEnumerable<Value> value = (IEnumerable<Value>)_value;
             return string.Concat("[", string.Join(", ", value.Select(item => item.Output())), "]");
+        }
+
+        public override string JsonSerialize()
+        {
+            IEnumerable<Value> value = (IEnumerable<Value>)_value;
+            return string.Concat("[", string.Join(",", value.Select(item => item.JsonSerialize())), "]");
         }
     }
 
@@ -304,6 +349,11 @@ namespace TemplateInterpreter
         public override string Output()
         {
             return $"lambda({string.Join(", ", _parameterNames)})";
+        }
+
+        public override string JsonSerialize()
+        {
+            return $"\"func<lambda({string.Join(", ", _parameterNames)})>\"";
         }
     }
 
@@ -338,7 +388,19 @@ namespace TemplateInterpreter
             }
             else
             {
-                return ($"lazy({_expression.ToStackString()})");
+                return ($"lazy<{_expression.ToStackString()}>");
+            }
+        }
+
+        public override string JsonSerialize()
+        {
+            if (_isEvaluated)
+            {
+                return ((Value)_value).Output();
+            }
+            else
+            {
+                return ($"\"lazy<{_expression.ToStackString()}>\"");
             }
         }
     }
@@ -357,6 +419,10 @@ namespace TemplateInterpreter
             return $"type<{(ValueType)_value}>";
         }
 
+        public override string JsonSerialize()
+        {
+            return $"\"type<{(ValueType)_value}>\"";
+        }
     }
 
     public class Interpreter
@@ -5365,7 +5431,7 @@ namespace TemplateInterpreter
                             callSite);
                     }
 
-                    return new Value(new StringValue(string.Join(delimiter, array.Select(x => TypeHelper.FormatOutput(x.ValueOf().Unbox() ?? "")))));
+                    return new Value(new StringValue(string.Join(delimiter, array.Select(x => x.ValueOf().Output()))));
                 });
 
             Register("explode",
@@ -6290,7 +6356,7 @@ namespace TemplateInterpreter
 
                     try
                     {
-                        var json = TypeHelper.JsonSerialize(obj);
+                        var json = obj.JsonSerialize();
 
                         if (formatted)
                         {
@@ -6710,106 +6776,6 @@ namespace TemplateInterpreter
                     $"Expected value of type Number but found {value.GetType()}",
                     context,
                     astNode);
-            }
-        }
-
-        public static string FormatOutput(dynamic evaluated, bool serializing = false)
-        {
-            if (TypeHelper.IsConvertibleToDecimal(evaluated))
-            {
-                return evaluated.ToString();
-            }
-            else if (evaluated is bool)
-            {
-                return evaluated ? "true" : "false";
-            }
-            if (evaluated is DateTime)
-            {
-                return evaluated.ToString("o"); // ISO 8601 format
-            }
-            else if ((evaluated is string || evaluated is char) && serializing)
-            {
-                return $"\"{evaluated.ToString()}\"";
-            }
-            else if (evaluated is string || evaluated is char)
-            {
-                return evaluated.ToString();
-            }
-            else if (evaluated is ValueType valueType)
-            {
-                return $"type<{valueType.ToString()}>";
-            }
-            else if (evaluated is IEnumerable<Value>)
-            {
-                return FormatArrayOutput(evaluated);
-            }
-            else if (evaluated is IDictionary<string, Value> dict)
-            {
-                return string.Concat("{",
-                    string.Join(", ", dict.Keys.Select(key => string.Concat(key, ": ", FormatOutput(dict[key].ValueOf().Unbox(), true)))), "}");
-            }
-            else if (evaluated is Func<ExecutionContext, AstNode, List<object>, object> func)
-            {
-                return "lambda()";
-            }
-            else
-            {
-                return "object{}";
-            }
-        }
-
-        public static string FormatArrayOutput(IEnumerable<Value> array)
-        {
-            return string.Concat("[", string.Join(", ", array.Select(item => FormatOutput(item.ValueOf().Unbox(), true))), "]");
-        }
-
-        public static string JsonSerialize(Value value)
-        {
-            if (value.ValueOf() is NumberValue numberValue)
-            {
-                return numberValue.Value().ToString();
-            }
-            else if (value.ValueOf() is DateTimeValue dateTimeValue)
-            {
-                return $"\"{dateTimeValue.Value().ToString("o")}\""; // ISO 8601 format
-            }
-            else if (value.ValueOf() is BooleanValue booleanValue)
-            {
-                return booleanValue.Value() ? "true" : "false";
-            }
-            else if (value.ValueOf() is LambdaValue lambdaValue)
-            {
-                return $"\"func<lambda({string.Join(", ", lambdaValue.ParameterNames)})>\"";
-            }
-            else if (value.ValueOf() is FunctionReferenceValue funcRefValue)
-            {
-                return $"\"func<{funcRefValue.Name}>\"";
-            }
-            else if (value.ValueOf() is LazyValue)
-            {
-                return "\"value<lazy>\"";
-            }
-            else if (value.ValueOf() is TypeValue typeValue)
-            {
-                return $"\"type<{typeValue.Value().ToString()}>\"";
-            }
-            else if (value.ValueOf() is ObjectValue obj)
-            {
-                var dict = obj.Value();
-                return string.Concat("{",
-                    string.Join(",", dict.Keys.Select(key => string.Concat("\"", key, "\"", ":", JsonSerialize(dict[key])))), "}");
-            }
-            else if (value.ValueOf() is ArrayValue arrayValue)
-            {
-                return string.Concat("[", string.Join(",", arrayValue.Value().Select(item => JsonSerialize(item))), "]");
-            }
-            else if (value.ValueOf() is StringValue stringValue)
-            {
-                return new JavaScriptSerializer().Serialize(stringValue.Value());
-            }
-            else
-            {
-                return $"\"{value.ValueOf().Unbox().ToString()}\"";
             }
         }
 
