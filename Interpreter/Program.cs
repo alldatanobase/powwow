@@ -14,7 +14,7 @@ namespace TemplateInterpreter
         static void Main(string[] args)
         {
             // Create the interpreter
-            var interpreter = new TemplateInterpreter.Interpreter();
+            var interpreter = new Interpreter();
         }
     }
 
@@ -71,7 +71,7 @@ namespace TemplateInterpreter
             }
             else
             {
-                throw new TemplateEvaluationException($"Expected type {type} but found {_type}.", context);
+                throw new InnerEvaluationException($"Expected type {type} but found {_type}");
             }
         }
     }
@@ -307,14 +307,20 @@ namespace TemplateInterpreter
                 {
                     if (_dataverseService == null)
                     {
-                        throw new TemplateEvaluationException("Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.", context);
+                        throw new TemplateEvaluationException(
+                            "Dataverse service not configured. The fetch function requires a DataverseService to be provided to the Interpreter.",
+                            context,
+                            callSite);
                     }
 
                     var fetchXml = (args[0] as StringValue).Value();
 
                     if (string.IsNullOrEmpty(fetchXml))
                     {
-                        throw new TemplateEvaluationException("fetch function requires a non-empty FetchXML string", context);
+                        throw new TemplateEvaluationException(
+                            "fetch function requires a non-empty FetchXML string",
+                            context,
+                            callSite);
                     }
 
                     return _dataverseService.RetrieveMultiple(fetchXml);
@@ -439,7 +445,10 @@ namespace TemplateInterpreter
         {
             if (_currentDepth >= _maxDepth)
             {
-                throw new TemplateEvaluationException($"Maximum call stack depth {_maxDepth} has been exceeded.", this);
+                throw new TemplateEvaluationException(
+                    $"Maximum call stack depth {_maxDepth} has been exceeded.",
+                    this,
+                    _callSite);
             }
         }
 
@@ -448,9 +457,8 @@ namespace TemplateInterpreter
             // Check if already defined as a variable, an iterator variable, or defined in the data context
             if (_variables.ContainsKey(name) || _iteratorValues.ContainsKey(name) || TryResolveValue(name, out _))
             {
-                throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
-                    this);
+                throw new InnerEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field");
             }
 
             // If we get here, the name is safe to use
@@ -462,9 +470,8 @@ namespace TemplateInterpreter
             bool result = TryResolveMutableValue(name, out Value variable);
             if (!result)
             {
-                throw new TemplateEvaluationException(
-                    $"Cannot mutate variable '{name}' because it has not been defined",
-                    this);
+                throw new InnerEvaluationException(
+                    $"Cannot mutate variable '{name}' because it has not been defined");
             }
 
             // If we get here, the name is safe to use
@@ -575,7 +582,7 @@ namespace TemplateInterpreter
             // Check if the first part is an iterator
             if (_iteratorValues.ContainsKey(parts[0]))
             {
-                throw new TemplateEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned", this);
+                throw new InnerEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned");
             }
             else if (_variables.ContainsKey(parts[0]))
             {
@@ -605,7 +612,7 @@ namespace TemplateInterpreter
             }
             else if (TryGetDataProperty(parts[0], out current))
             {
-                throw new TemplateEvaluationException($"Global variable {path} is not mutable and cannot be reassigned", this);
+                throw new InnerEvaluationException($"Global variable {path} is not mutable and cannot be reassigned");
             }
             else if (_parentContext != null)
             {
@@ -674,7 +681,7 @@ namespace TemplateInterpreter
                 return new FunctionReferenceValue(path);
             }
 
-            throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
+            throw new InnerEvaluationException($"Unknown identifier: {path}");
         }
     }
 
@@ -699,7 +706,7 @@ namespace TemplateInterpreter
             {
                 var missingCount = parameterNames.Count - parameterValues.Count;
                 var missingParams = string.Join(", ", parameterNames.Skip(parameterValues.Count).Take(missingCount));
-                throw new TemplateEvaluationException($"Not enough parameter values provided. Missing values for: {missingParams}", this);
+                throw new InnerEvaluationException($"Not enough parameter values provided. Missing values for: {missingParams}");
             }
 
             // Map parameter names to values
@@ -724,24 +731,21 @@ namespace TemplateInterpreter
             // Check if already defined as a variable
             if (_variables.ContainsKey(name))
             {
-                throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
-                    this);
+                throw new InnerEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field");
             }
 
             // Check if defined as a parameter
             if (_parameters.ContainsKey(name))
             {
-                throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with a parameter name",
-                    this);
+                throw new InnerEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with a parameter name");
             }
 
             if (_parentContext.TryResolveNonShadowableValue(name, out _))
             {
-                throw new TemplateEvaluationException(
-                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field",
-                    this);
+                throw new InnerEvaluationException(
+                    $"Cannot define variable '{name}' because it conflicts with an existing variable or field");
             }
 
             _variables[name] = value;
@@ -837,11 +841,11 @@ namespace TemplateInterpreter
             // Check if the first part is an iterator
             if (_iteratorValues.ContainsKey(parts[0]))
             {
-                throw new TemplateEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned", this);
+                throw new InnerEvaluationException($"Iterator variable {path} is not mutable and cannot be reassigned");
             }
             else if (_parameters.TryGetValue(parts[0], out current))
             {
-                throw new TemplateEvaluationException($"Parameter {path} is not mutable and cannot be reassigned", this);
+                throw new InnerEvaluationException($"Parameter {path} is not mutable and cannot be reassigned");
             }
             else if (_variables.ContainsKey(parts[0]))
             {
@@ -871,7 +875,7 @@ namespace TemplateInterpreter
             }
             else if (TryGetDataProperty(parts[0], out current))
             {
-                throw new TemplateEvaluationException($"Global variable {path} is not mutable and cannot be reassigned", this);
+                throw new InnerEvaluationException($"Global variable {path} is not mutable and cannot be reassigned");
             }
             else
             {
@@ -966,7 +970,7 @@ namespace TemplateInterpreter
                     }
                     catch
                     {
-                        throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
+                        throw new InnerEvaluationException($"Unknown identifier: {path}");
                     }
                 }
 
@@ -994,7 +998,7 @@ namespace TemplateInterpreter
                     }
                     catch
                     {
-                        throw new TemplateEvaluationException($"Unknown identifier: {path}", this);
+                        throw new InnerEvaluationException($"Unknown identifier: {path}");
                     }
                 }
 
@@ -1039,6 +1043,11 @@ namespace TemplateInterpreter
         }
     }
 
+    public class InnerEvaluationException : Exception
+    {
+        public InnerEvaluationException(string message) : base(message) { }
+    }
+
     public class TemplateEvaluationException : Exception
     {
         public SourceLocation Location { get; }
@@ -1048,12 +1057,13 @@ namespace TemplateInterpreter
 
         public TemplateEvaluationException(
             string message,
-            ExecutionContext frame)
+            ExecutionContext frame,
+            AstNode callSite)
             : base(FormatMessage(message, frame.CallSite.Location))
         {
             Location = frame.CallSite.Location;
             Descriptor = message;
-            CallSite = frame.CallSite;
+            CallSite = callSite;
             StackTrace = FormatStackTrace(message, frame.CallSite.Location, frame);
         }
 
@@ -2167,7 +2177,10 @@ namespace TemplateInterpreter
         {
             if (_includedTemplate == null)
             {
-                throw new TemplateEvaluationException($"Template '{_templateName}' could not been resolved", context);
+                throw new TemplateEvaluationException(
+                    $"Template '{_templateName}' could not been resolved",
+                    context,
+                    _includedTemplate);
             }
             var currentContext = new ExecutionContext(
                 context.GetData(),
@@ -2316,14 +2329,23 @@ namespace TemplateInterpreter
                     }
                     else if (paramValue is FunctionReferenceValue paramFuncInfo)
                     {
-                        if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs, currentContext))
+
+                        try
                         {
-                            throw new TemplateEvaluationException(
-                                $"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments",
-                                currentContext);
+                            if (!registry.TryGetFunction(paramFuncInfo.Name, args, out var function, out var effectiveArgs))
+                            {
+                                throw new TemplateEvaluationException(
+                                    $"No matching overload found for function '{paramFuncInfo.Name}' with the provided arguments",
+                                    currentContext,
+                                    _callable);
+                            }
+                            registry.ValidateArguments(function, effectiveArgs);
+                            return function.Implementation(currentContext, this, effectiveArgs);
                         }
-                        registry.ValidateArguments(function, effectiveArgs, currentContext);
-                        return function.Implementation(currentContext, this, effectiveArgs);
+                        catch (InnerEvaluationException ex)
+                        {
+                            throw new TemplateEvaluationException(ex.Message, currentContext, _callable);
+                        }
                     }
                 }
 
@@ -2338,31 +2360,48 @@ namespace TemplateInterpreter
 
                     if (variableValue is FunctionReferenceValue variableFuncInfo)
                     {
-                        if (!registry.TryGetFunction(variableFuncInfo.Name, args, out var varFunc, out var varEffArgs, currentContext))
+                        try
                         {
-                            throw new TemplateEvaluationException(
-                                $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
-                                currentContext);
+                            if (!registry.TryGetFunction(variableFuncInfo.Name, args, out var varFunc, out var varEffArgs))
+                            {
+                                throw new TemplateEvaluationException(
+                                    $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
+                                    currentContext,
+                                    _callable);
+                            }
+                            registry.ValidateArguments(varFunc, varEffArgs);
+                            return varFunc.Implementation(currentContext, this, varEffArgs);
                         }
-                        registry.ValidateArguments(varFunc, varEffArgs, currentContext);
-                        return varFunc.Implementation(currentContext, this, varEffArgs);
+                        catch (InnerEvaluationException ex)
+                        {
+                            throw new TemplateEvaluationException(ex.Message, currentContext, _callable);
+                        }
                     }
                 }
 
-                // If not a parameter in any context or parameter isn't a function, try the registry
-                if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs, currentContext))
+                try
                 {
-                    throw new TemplateEvaluationException(
-                        $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
-                        currentContext);
+                    // If not a parameter in any context or parameter isn't a function, try the registry
+                    if (!registry.TryGetFunction(functionInfo.Name, args, out var func, out var effArgs))
+                    {
+                        throw new TemplateEvaluationException(
+                            $"No matching overload found for function '{functionInfo.Name}' with the provided arguments",
+                            currentContext,
+                            _callable);
+                    }
+                    registry.ValidateArguments(func, effArgs);
+                    return func.Implementation(currentContext, this, effArgs);
                 }
-                registry.ValidateArguments(func, effArgs, currentContext);
-                return func.Implementation(currentContext, this, effArgs);
+                catch (InnerEvaluationException ex)
+                {
+                    throw new TemplateEvaluationException(ex.Message, currentContext, _callable);
+                }
             }
 
             throw new TemplateEvaluationException(
                 $"Expression is not callable: {callable?.GetType().Name ?? "<unknown>"}",
-                currentContext);
+                currentContext,
+                _callable);
         }
 
         private bool IsLazilyEvaluatedFunction(Value callable, int argumentCount, ExecutionContext context)
@@ -2492,24 +2531,38 @@ namespace TemplateInterpreter
             // Context is captured here, during evaluation, not during parsing
             return new LambdaValue(new Func<ExecutionContext, AstNode, List<Value>, Value>((callerContext, callSite, args) =>
             {
-                // Create a new context that includes both captured context and new parameters
-                var lambdaContext = new LambdaExecutionContext(callerContext, definitionContext, _parameters, args, callSite);
-
-                // Execute each statement in order
-                foreach (var statement in _statements)
+                try
                 {
-                    var value = statement.Value.Item1.Evaluate(lambdaContext);
-                    if (statement.Value.Item2 == StatementType.Declaration)
-                    {
-                        lambdaContext.DefineVariable(statement.Key, value);
-                    }
-                    else
-                    {
-                        lambdaContext.RedefineVariable(statement.Key, value);
-                    }
-                }
+                    // Create a new context that includes both captured context and new parameters
+                    var lambdaContext = new LambdaExecutionContext(callerContext, definitionContext, _parameters, args, callSite);
 
-                return _finalExpression.Evaluate(lambdaContext);
+                    // Execute each statement in order
+                    foreach (var statement in _statements)
+                    {
+                        var value = statement.Value.Item1.Evaluate(lambdaContext);
+                        try
+                        {
+                            if (statement.Value.Item2 == StatementType.Declaration)
+                            {
+                                lambdaContext.DefineVariable(statement.Key, value);
+                            }
+                            else
+                            {
+                                lambdaContext.RedefineVariable(statement.Key, value);
+                            }
+                        }
+                        catch (InnerEvaluationException ex)
+                        {
+                            throw new TemplateEvaluationException(ex.Message, lambdaContext, callSite);
+                        }
+                    }
+
+                    return _finalExpression.Evaluate(lambdaContext);
+                }
+                catch (InnerEvaluationException ex)
+                {
+                    throw new TemplateEvaluationException(ex.Message, context, this);
+                }
             }), _parameters);
         }
 
@@ -2542,7 +2595,14 @@ namespace TemplateInterpreter
         public override Value Evaluate(ExecutionContext context)
         {
             var value = _expression.Evaluate(context);
-            context.DefineVariable(_variableName, value);
+            try
+            {
+                context.DefineVariable(_variableName, value);
+            }
+            catch (InnerEvaluationException ex)
+            {
+                throw new TemplateEvaluationException(ex.Message, context, this);
+            }
             return new StringValue(string.Empty); // Let statements don't produce output
         }
 
@@ -2571,7 +2631,14 @@ namespace TemplateInterpreter
         public override Value Evaluate(ExecutionContext context)
         {
             var value = _expression.Evaluate(context);
-            context.RedefineVariable(_variableName, value);
+            try
+            {
+                context.RedefineVariable(_variableName, value);
+            }
+            catch (InnerEvaluationException ex)
+            {
+                throw new TemplateEvaluationException(ex.Message, context, this);
+            }
             return new StringValue(string.Empty); // Mutations don't produce output
         }
 
@@ -2600,7 +2667,14 @@ namespace TemplateInterpreter
         public override Value Evaluate(ExecutionContext context)
         {
             var result = _body.Evaluate(context);
-            context.DefineVariable(_variableName, result);
+            try
+            {
+                context.DefineVariable(_variableName, result);
+            }
+            catch (InnerEvaluationException ex)
+            {
+                throw new TemplateEvaluationException(ex.Message, context, this);
+            }
             return new StringValue(string.Empty); // Capture doesn't output anything directly
         }
 
@@ -2664,7 +2738,10 @@ namespace TemplateInterpreter
             var evaluated = _object.Evaluate(context);
             if (evaluated == null)
             {
-                throw new TemplateEvaluationException($"Cannot access field '{_fieldName}' on null object", context);
+                throw new TemplateEvaluationException(
+                    $"Cannot access field '{_fieldName}' on null object",
+                    context,
+                    _object);
             }
 
             if (evaluated is ObjectValue obj)
@@ -2672,12 +2749,18 @@ namespace TemplateInterpreter
                 var value = obj.Value();
                 if (!value.ContainsKey(_fieldName))
                 {
-                    throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
+                    throw new TemplateEvaluationException(
+                        $"Object does not contain field '{_fieldName}'",
+                        context,
+                        _object);
                 }
                 return value[_fieldName];
             }
 
-            throw new TemplateEvaluationException($"Object does not contain field '{_fieldName}'", context);
+            throw new TemplateEvaluationException(
+                $"Object does not contain field '{_fieldName}'",
+                context,
+                _object);
         }
 
         public override string ToStackString()
@@ -2729,7 +2812,14 @@ namespace TemplateInterpreter
 
         public override Value Evaluate(ExecutionContext context)
         {
-            return context.ResolveValue(_path);
+            try
+            {
+                return context.ResolveValue(_path);
+            }
+            catch (InnerEvaluationException ex)
+            {
+                throw new TemplateEvaluationException(ex.Message, context, this);
+            }
         }
 
         public override string ToStackString()
@@ -2840,11 +2930,15 @@ namespace TemplateInterpreter
                     {
                         throw new TemplateEvaluationException(
                             $"Expected value of type boolean but found {value.GetType()}",
-                            context);
+                            context,
+                            _expression);
                     }
                     return new BooleanValue(!boolValue.Value());
                 default:
-                    throw new TemplateEvaluationException(string.Format("Unknown unary operator: {0}", _operator), context);
+                    throw new TemplateEvaluationException(
+                        $"Unknown unary operator: {_operator}",
+                        context,
+                        this);
             }
         }
 
@@ -2878,16 +2972,16 @@ namespace TemplateInterpreter
             if (_operator == TokenType.And)
             {
                 return new BooleanValue(
-                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context) &&
-                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context));
+                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context, _left) &&
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right));
             }
 
             // short circuit eval for ||
             if (_operator == TokenType.Or)
             {
                 return new BooleanValue(
-                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context) ||
-                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context));
+                    TypeHelper.UnboxBoolean(_left.Evaluate(context), context, _left) ||
+                    TypeHelper.UnboxBoolean(_right.Evaluate(context), context, _right));
             }
 
             var left = _left.Evaluate(context);
@@ -2898,27 +2992,28 @@ namespace TemplateInterpreter
             switch (_operator)
             {
                 case TokenType.Plus:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context) + TypeHelper.UnboxNumber(right, context));
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) + TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.Minus:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context) - TypeHelper.UnboxNumber(right, context));
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) - TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.Multiply:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context) * TypeHelper.UnboxNumber(right, context));
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) * TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.Divide:
-                    return new NumberValue(TypeHelper.UnboxNumber(left, context) / TypeHelper.UnboxNumber(right, context));
+                    return new NumberValue(TypeHelper.UnboxNumber(left, context, _left) / TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.LessThan:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) < TypeHelper.UnboxNumber(right, context));
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) < TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.LessThanEqual:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) <= TypeHelper.UnboxNumber(right, context));
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) <= TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.GreaterThan:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) > TypeHelper.UnboxNumber(right, context));
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) > TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.GreaterThanEqual:
-                    return new BooleanValue(TypeHelper.UnboxNumber(left, context) >= TypeHelper.UnboxNumber(right, context));
+                    return new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) >= TypeHelper.UnboxNumber(right, context, _right));
                 case TokenType.Equal:
                     if (left.TypeOf() != right.TypeOf())
                     {
                         throw new TemplateEvaluationException(
                             $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}",
-                            context);
+                            context,
+                            this);
                     }
                     else
                     {
@@ -2936,7 +3031,8 @@ namespace TemplateInterpreter
                     {
                         throw new TemplateEvaluationException(
                             $"Expected similar types but found {left.TypeOf()} and {right.TypeOf()}",
-                            context);
+                            context,
+                            this);
                     }
                     else
                     {
@@ -2950,7 +3046,10 @@ namespace TemplateInterpreter
                         }
                     }
                 default:
-                    throw new TemplateEvaluationException(string.Format("Unknown binary operator: {0}", _operator), context);
+                    throw new TemplateEvaluationException(
+                        $"Unknown binary operator: {_operator}",
+                        context,
+                        this);
             }
         }
 
@@ -2991,7 +3090,8 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(
                     $"Iterator name '{_iteratorName}' conflicts with an existing variable or field",
-                    context);
+                    context,
+                    this);
             }
 
             var collection = _collection.Evaluate(context);
@@ -3009,7 +3109,8 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(
                     "Each statement requires an array",
-                    context);
+                    context,
+                    _collection);
             }
         }
 
@@ -3056,7 +3157,7 @@ namespace TemplateInterpreter
             foreach (var branch in _conditionalBranches)
             {
                 var evaluated = branch.Condition.Evaluate(context);
-                if (TypeHelper.UnboxBoolean(evaluated, context))
+                if (TypeHelper.UnboxBoolean(evaluated, context, this))
                 {
                     return branch.Body.Evaluate(context);
                 }
@@ -4292,7 +4393,10 @@ namespace TemplateInterpreter
                     var enumerable = (args[0] as ArrayValue).Value();
                     if (enumerable == null)
                     {
-                        throw new TemplateEvaluationException("length function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "length function requires an array argument",
+                            context,
+                            callSite);
                     }
                     return new NumberValue(enumerable.Count());
                 });
@@ -4306,7 +4410,10 @@ namespace TemplateInterpreter
                     var str = (args[0] as StringValue).Value();
                     if (str == null)
                     {
-                        throw new TemplateEvaluationException("length function requires a string argument", context);
+                        throw new TemplateEvaluationException(
+                            "length function requires a string argument",
+                            context,
+                            callSite);
                     }
                     return new NumberValue(str.Length);
                 });
@@ -4320,7 +4427,10 @@ namespace TemplateInterpreter
                     var str = (args[0] as StringValue).Value();
                     if (str == null)
                     {
-                        throw new TemplateEvaluationException("length function requires a string argument", context);
+                        throw new TemplateEvaluationException(
+                            "length function requires a string argument",
+                            context,
+                            callSite);
                     }
                     return new BooleanValue(string.IsNullOrEmpty(str));
                 });
@@ -4337,7 +4447,10 @@ namespace TemplateInterpreter
 
                     if (first == null || second == null)
                     {
-                        throw new TemplateEvaluationException("concat function requires both arguments to be arrays", context);
+                        throw new TemplateEvaluationException(
+                            "concat function requires both arguments to be arrays",
+                            context,
+                            callSite);
                     }
 
                     // Combine both enumerables into a single list
@@ -4505,7 +4618,10 @@ namespace TemplateInterpreter
 
                     if (step == 0)
                     {
-                        throw new TemplateEvaluationException("range function requires a non-zero step value", context);
+                        throw new TemplateEvaluationException(
+                            "range function requires a non-zero step value",
+                            context,
+                            callSite);
                     }
 
                     var result = new List<NumberValue>();
@@ -4544,12 +4660,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeYear function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeYear function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeYear function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeYear function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4584,12 +4706,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeMonth function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeMonth function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeMonth function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeMonth function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4636,12 +4764,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeDay function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeDay function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeDay function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeDay function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4676,12 +4810,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeHour function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeHour function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeHour function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeHour function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4716,12 +4856,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeMinute function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeMinute function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeMinute function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeMinute function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4756,12 +4902,18 @@ namespace TemplateInterpreter
 
                     if (!start.HasValue || !end.HasValue)
                     {
-                        throw new TemplateEvaluationException("rangeSecond function requires valid DateTime parameters", context);
+                        throw new TemplateEvaluationException(
+                            "rangeSecond function requires valid DateTime parameters",
+                            context,
+                            callSite);
                     }
 
                     if (step <= 0)
                     {
-                        throw new TemplateEvaluationException("rangeSecond function requires a positive step value", context);
+                        throw new TemplateEvaluationException(
+                            "rangeSecond function requires a positive step value",
+                            context,
+                            callSite);
                     }
 
                     if (start >= end)
@@ -4793,7 +4945,10 @@ namespace TemplateInterpreter
 
                     if (collection == null || predicate == null)
                     {
-                        throw new TemplateEvaluationException("filter function requires an array and a lambda function", context);
+                        throw new TemplateEvaluationException(
+                            "filter function requires an array and a lambda function",
+                            context,
+                            callSite);
                     }
 
                     var result = new List<Value>();
@@ -4811,7 +4966,8 @@ namespace TemplateInterpreter
                         {
                             throw new TemplateEvaluationException(
                                 $"Filter predicate should evaluate to a boolean value but found {predicateResult.GetType()}",
-                                context);
+                                context,
+                                callSite);
                         }
                     }
 
@@ -4830,13 +4986,19 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("at function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "at function requires an array as first argument",
+                            context,
+                            callSite);
                     }
 
                     var list = array.Cast<Value>().ToList();
                     if (index < 0 || index >= list.Count)
                     {
-                        throw new TemplateEvaluationException($"Index {index} is out of bounds for array of length {list.Count}", context);
+                        throw new TemplateEvaluationException(
+                            $"Index {index} is out of bounds for array of length {list.Count}",
+                            context,
+                            callSite);
                     }
 
                     return list[index];
@@ -4851,13 +5013,19 @@ namespace TemplateInterpreter
                     var array = (args[0] as ArrayValue).Value();
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("first function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "first function requires an array argument",
+                            context,
+                            callSite);
                     }
 
                     var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
                     {
-                        throw new TemplateEvaluationException("Cannot get first element of empty array", context);
+                        throw new TemplateEvaluationException(
+                            "Cannot get first element of empty array",
+                            context,
+                            callSite);
                     }
 
                     return list[0];
@@ -4872,7 +5040,10 @@ namespace TemplateInterpreter
                     var array = (args[0] as ArrayValue).Value();
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("rest function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "rest function requires an array argument",
+                            context,
+                            callSite);
                     }
 
                     var list = array.Cast<Value>().ToList();
@@ -4893,13 +5064,19 @@ namespace TemplateInterpreter
                     var array = (args[0] as ArrayValue).Value();
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("last function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "last function requires an array argument",
+                            context,
+                            callSite);
                     }
 
                     var list = array.Cast<Value>().ToList();
                     if (list.Count == 0)
                     {
-                        throw new TemplateEvaluationException("Cannot get last element of empty array", context);
+                        throw new TemplateEvaluationException(
+                            "Cannot get last element of empty array",
+                            context,
+                            callSite);
                     }
 
                     return list[list.Count - 1];
@@ -4914,7 +5091,10 @@ namespace TemplateInterpreter
                     var array = (args[0] as ArrayValue).Value();
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("any function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "any function requires an array argument",
+                            context,
+                            callSite);
                     }
 
                     return new BooleanValue(array.Any());
@@ -4933,7 +5113,14 @@ namespace TemplateInterpreter
                     var falseBranch = args[2] as LazyValue;
 
                     var conditionResult = condition.Evaluate();
-                    conditionResult.ExpectType(ValueType.Boolean, context);
+                    try
+                    {
+                        conditionResult.ExpectType(ValueType.Boolean, context);
+                    }
+                    catch (InnerEvaluationException ex)
+                    {
+                        throw new TemplateEvaluationException(ex.Message, context, callSite);
+                    }
 
                     return (conditionResult as BooleanValue).Value() ?
                         trueBranch.Evaluate() :
@@ -4953,11 +5140,17 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("join function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "join function requires an array as first argument",
+                            context,
+                            callSite);
                     }
                     if (delimiter == null)
                     {
-                        throw new TemplateEvaluationException("join function requires a string as second argument", context);
+                        throw new TemplateEvaluationException(
+                            "join function requires a string as second argument",
+                            context,
+                            callSite);
                     }
 
                     // TODO: reimplement tostring for all value types and remove FormatOutput
@@ -4976,11 +5169,17 @@ namespace TemplateInterpreter
 
                     if (str == null)
                     {
-                        throw new TemplateEvaluationException("explode function requires a string as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "explode function requires a string as first argument",
+                            context,
+                            callSite);
                     }
                     if (delimiter == null)
                     {
-                        throw new TemplateEvaluationException("explode function requires a string as second argument", context);
+                        throw new TemplateEvaluationException(
+                            "explode function requires a string as second argument",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(str.Split(new[] { delimiter }, StringSplitOptions.None).Select(s => new StringValue(s)).ToList());
@@ -4998,7 +5197,10 @@ namespace TemplateInterpreter
 
                     if (array == null || mapper == null)
                     {
-                        throw new TemplateEvaluationException("map function requires an array and a function", context);
+                        throw new TemplateEvaluationException(
+                            "map function requires an array and a function",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(array.Select(item => mapper(context, callSite, new List<Value> { item })).ToList());
@@ -5018,7 +5220,10 @@ namespace TemplateInterpreter
 
                     if (array == null || reducer == null)
                     {
-                        throw new TemplateEvaluationException("reduce function requires an array and a function", context);
+                        throw new TemplateEvaluationException(
+                            "reduce function requires an array and a function",
+                            context,
+                            callSite);
                     }
 
                     return array.Aggregate(initialValue, (acc, curr) =>
@@ -5037,7 +5242,10 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("take function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "take function requires an array as first argument",
+                            context,
+                            callSite);
                     }
 
                     if (count <= 0)
@@ -5060,7 +5268,10 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("skip function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "skip function requires an array as first argument",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(array.Skip(count));
@@ -5075,7 +5286,10 @@ namespace TemplateInterpreter
                     var array = (args[0] as ArrayValue).Value();
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("order function requires an array argument", context);
+                        throw new TemplateEvaluationException(
+                            "order function requires an array argument",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(array.OrderBy(x => x.Unbox()).ToList());
@@ -5093,7 +5307,10 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("order function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "order function requires an array as first argument",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(ascending ?
@@ -5113,10 +5330,20 @@ namespace TemplateInterpreter
 
                     if (array == null || comparer == null)
                     {
-                        throw new TemplateEvaluationException("order function requires an array and a comparison function", context);
+                        throw new TemplateEvaluationException(
+                            "order function requires an array and a comparison function",
+                            context,
+                            callSite);
                     }
 
-                    return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)).ToList());
+                    try
+                    {
+                        return new ArrayValue(array.OrderBy(x => x, new ValueComparer(context, callSite, comparer)).ToList());
+                    }
+                    catch (InnerEvaluationException ex)
+                    {
+                        throw new TemplateEvaluationException(ex.Message, context, callSite);
+                    }
                 });
 
             Register("group",
@@ -5131,11 +5358,17 @@ namespace TemplateInterpreter
 
                     if (array == null)
                     {
-                        throw new TemplateEvaluationException("group function requires an array as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "group function requires an array as first argument",
+                            context,
+                            callSite);
                     }
                     if (string.IsNullOrEmpty(fieldName))
                     {
-                        throw new TemplateEvaluationException("group function requires a non-empty string as second argument", context);
+                        throw new TemplateEvaluationException(
+                            "group function requires a non-empty string as second argument",
+                            context,
+                            callSite);
                     }
 
                     var result = new Dictionary<string, Value>();
@@ -5151,7 +5384,10 @@ namespace TemplateInterpreter
                         {
                             if (!dict.ContainsKey(fieldName))
                             {
-                                throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
+                                throw new TemplateEvaluationException(
+                                    $"Object does not contain field '{fieldName}'",
+                                    context,
+                                    callSite);
                             }
                             else
                             {
@@ -5162,18 +5398,27 @@ namespace TemplateInterpreter
                                 }
                                 else
                                 {
-                                    throw new TemplateEvaluationException($"Cannot group by value of type '{value.GetType()}'", context);
+                                    throw new TemplateEvaluationException(
+                                        $"Cannot group by value of type '{value.GetType()}'",
+                                        context,
+                                        callSite);
                                 }
                             }
                         }
                         else
                         {
-                            throw new TemplateEvaluationException($"group function requires an array of objects to group", context);
+                            throw new TemplateEvaluationException(
+                                $"group function requires an array of objects to group",
+                                context,
+                                callSite);
                         }
 
                         if (key == null)
                         {
-                            throw new TemplateEvaluationException($"Field '{fieldName}' must be present", context);
+                            throw new TemplateEvaluationException(
+                                $"Field '{fieldName}' must be present",
+                                context,
+                                callSite);
                         }
 
                         // Add item to the appropriate group
@@ -5199,15 +5444,24 @@ namespace TemplateInterpreter
 
                     if (obj == null)
                     {
-                        throw new TemplateEvaluationException("get function requires an object as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "get function requires an object as first argument",
+                            context,
+                            callSite);
                     }
                     if (string.IsNullOrEmpty(fieldName))
                     {
-                        throw new TemplateEvaluationException("get function requires a non-empty string as second argument", context);
+                        throw new TemplateEvaluationException(
+                            "get function requires a non-empty string as second argument",
+                            context,
+                            callSite);
                     }
                     if (!obj.ContainsKey(fieldName))
                     {
-                        throw new TemplateEvaluationException($"Object does not contain field '{fieldName}'", context);
+                        throw new TemplateEvaluationException(
+                            $"Object does not contain field '{fieldName}'",
+                            context,
+                            callSite);
                     }
 
                     return obj[fieldName];
@@ -5222,7 +5476,10 @@ namespace TemplateInterpreter
                     var obj = (args[0] as ObjectValue).Value();
                     if (obj == null)
                     {
-                        throw new TemplateEvaluationException("keys function requires an object argument", context);
+                        throw new TemplateEvaluationException(
+                            "keys function requires an object argument",
+                            context,
+                            callSite);
                     }
 
                     return new ArrayValue(obj.Keys.Select(key => new StringValue(key)).ToList());
@@ -5240,7 +5497,10 @@ namespace TemplateInterpreter
 
                     if (number2 == 0)
                     {
-                        throw new TemplateEvaluationException("Cannot perform modulo with zero as divisor", context);
+                        throw new TemplateEvaluationException(
+                            "Cannot perform modulo with zero as divisor",
+                            context,
+                            callSite);
                     }
 
                     return new NumberValue(number1 % number2);
@@ -5288,7 +5548,10 @@ namespace TemplateInterpreter
 
                     if (decimals < 0)
                     {
-                        throw new TemplateEvaluationException("Number of decimal places cannot be negative", context);
+                        throw new TemplateEvaluationException(
+                            "Number of decimal places cannot be negative",
+                            context,
+                            callSite);
                     }
 
                     return new NumberValue(Math.Round(number, decimals));
@@ -5324,12 +5587,18 @@ namespace TemplateInterpreter
 
                     if (string.IsNullOrEmpty(str))
                     {
-                        throw new TemplateEvaluationException("Cannot convert empty or null string to number", context);
+                        throw new TemplateEvaluationException(
+                            "Cannot convert empty or null string to number",
+                            context,
+                            callSite);
                     }
 
                     if (!decimal.TryParse(str, out decimal result))
                     {
-                        throw new TemplateEvaluationException($"Cannot convert string '{str}' to number", context);
+                        throw new TemplateEvaluationException(
+                            $"Cannot convert string '{str}' to number",
+                            context,
+                            callSite);
                     }
 
                     return new NumberValue(result);
@@ -5360,7 +5629,10 @@ namespace TemplateInterpreter
                     var dateStr = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(dateStr))
                     {
-                        throw new TemplateEvaluationException("datetime function requires a non-empty string argument", context);
+                        throw new TemplateEvaluationException(
+                            "datetime function requires a non-empty string argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5369,7 +5641,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to parse date string '{dateStr}': {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to parse date string '{dateStr}': {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5385,12 +5660,18 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("format function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "format function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     if (string.IsNullOrEmpty(format))
                     {
-                        throw new TemplateEvaluationException("format function requires a non-empty format string as second argument", context);
+                        throw new TemplateEvaluationException(
+                            "format function requires a non-empty format string as second argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5399,7 +5680,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to format date with format string '{format}': {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to format date with format string '{format}': {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5415,7 +5699,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addYears function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addYears function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5424,7 +5711,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {years} years to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {years} years to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5440,7 +5730,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addMonths function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addMonths function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5449,7 +5742,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {months} months to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {months} months to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5465,7 +5761,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addDays function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addDays function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5474,7 +5773,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {days} days to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {days} days to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5490,7 +5792,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addHours function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addHours function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5499,7 +5804,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {hours} hours to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {hours} hours to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5515,7 +5823,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addMinutes function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addMinutes function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5524,7 +5835,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {minutes} minutes to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {minutes} minutes to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5540,7 +5854,10 @@ namespace TemplateInterpreter
 
                     if (!date.HasValue)
                     {
-                        throw new TemplateEvaluationException("addSeconds function requires a valid DateTime as first argument", context);
+                        throw new TemplateEvaluationException(
+                            "addSeconds function requires a valid DateTime as first argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5549,7 +5866,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to add {seconds} seconds to date: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to add {seconds} seconds to date: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5576,7 +5896,10 @@ namespace TemplateInterpreter
                     var uriString = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(uriString))
                     {
-                        throw new TemplateEvaluationException("uri function requires a non-empty string argument", context);
+                        throw new TemplateEvaluationException(
+                            "uri function requires a non-empty string argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5608,7 +5931,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to parse uri string '{uriString}': {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to parse uri string '{uriString}': {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5626,7 +5952,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to encode html: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to encode html: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5644,7 +5973,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to decode html: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to decode html: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5662,7 +5994,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to encode url: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to encode url: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5680,7 +6015,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to decode url: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to decode url: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5693,7 +6031,9 @@ namespace TemplateInterpreter
                     var jsonString = (args[0] as StringValue).Value();
                     if (string.IsNullOrEmpty(jsonString))
                     {
-                        throw new TemplateEvaluationException("fromJson function requires a non-empty string argument", context);
+                        throw new TemplateEvaluationException("fromJson function requires a non-empty string argument",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5701,13 +6041,19 @@ namespace TemplateInterpreter
                         var parsed = ParseToObject(jsonString);
                         if (parsed == null)
                         {
-                            throw new TemplateEvaluationException($"Failed to deserialize object to JSON: Object must have a value", context);
+                            throw new TemplateEvaluationException(
+                                $"Failed to deserialize object to JSON: Object must have a value",
+                                context,
+                                callSite);
                         }
                         return parsed;
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to parse JSON string: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to parse JSON string: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
 
@@ -5723,7 +6069,10 @@ namespace TemplateInterpreter
 
                     if (obj == null)
                     {
-                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: Must have a value to serialize", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to serialize object to JSON: Must have a value to serialize",
+                            context,
+                            callSite);
                     }
 
                     try
@@ -5739,7 +6088,10 @@ namespace TemplateInterpreter
                     }
                     catch (Exception ex)
                     {
-                        throw new TemplateEvaluationException($"Failed to serialize object to JSON: {ex.Message}", context);
+                        throw new TemplateEvaluationException(
+                            $"Failed to serialize object to JSON: {ex.Message}",
+                            context,
+                            callSite);
                     }
                 });
         }
@@ -5930,8 +6282,7 @@ namespace TemplateInterpreter
             string name,
             List<Value> arguments,
             out FunctionDefinition matchingFunction,
-            out List<Value> effectiveArguments,
-            ExecutionContext context)
+            out List<Value> effectiveArguments)
         {
             matchingFunction = null;
             effectiveArguments = null;
@@ -5957,7 +6308,7 @@ namespace TemplateInterpreter
             {
                 Function = overload,
                 Score = ScoreTypeMatch(overload.Parameters, arguments),
-                EffectiveArgs = CreateEffectiveArguments(overload.Parameters, arguments, context)
+                EffectiveArgs = CreateEffectiveArguments(overload.Parameters, arguments)
             })
             .Where(x => x.Score >= 0) // Filter out incompatible matches
             .OrderByDescending(x => x.Score)
@@ -5971,7 +6322,8 @@ namespace TemplateInterpreter
             // If we have multiple matches with the same best score, it's ambiguous
             if (scoredOverloads.Count > 1 && scoredOverloads[0].Score == scoredOverloads[1].Score)
             {
-                throw new TemplateEvaluationException($"Ambiguous function call to '{name}'. Multiple overloads match the provided arguments.", context);
+                throw new InnerEvaluationException(
+                    $"Ambiguous function call to '{name}'. Multiple overloads match the provided arguments.");
             }
 
             var bestMatch = scoredOverloads.First();
@@ -5982,8 +6334,7 @@ namespace TemplateInterpreter
 
         private List<Value> CreateEffectiveArguments(
             List<ParameterDefinition> parameters,
-            List<Value> providedArgs,
-            ExecutionContext context)
+            List<Value> providedArgs)
         {
             var effectiveArgs = new List<Value>();
 
@@ -6000,7 +6351,7 @@ namespace TemplateInterpreter
                 else
                 {
                     // This shouldn't happen due to earlier checks, but just in case
-                    throw new TemplateEvaluationException("Function missing required argument", context);
+                    throw new InnerEvaluationException("Function missing required argument");
                 }
             }
 
@@ -6066,13 +6417,12 @@ namespace TemplateInterpreter
             return totalScore;
         }
 
-        public void ValidateArguments(FunctionDefinition function, List<Value> arguments, ExecutionContext context)
+        public void ValidateArguments(FunctionDefinition function, List<Value> arguments)
         {
             if (arguments.Count != function.Parameters.Count)
             {
-                throw new TemplateEvaluationException(
-                    $"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}",
-                    context);
+                throw new InnerEvaluationException(
+                    $"Function '{function.Name}' expects {function.Parameters.Count} arguments, but got {arguments.Count}");
             }
 
             for (int i = 0; i < arguments.Count; i++)
@@ -6091,7 +6441,7 @@ namespace TemplateInterpreter
                 {
                     if (!parameter.Type.IsClass)
                     {
-                        throw new TemplateEvaluationException($"Argument {i + 1} of function '{function.Name}' cannot be null", context);
+                        throw new InnerEvaluationException($"Argument {i + 1} of function '{function.Name}' cannot be null");
                     }
                     continue;
                 }
@@ -6103,9 +6453,7 @@ namespace TemplateInterpreter
                 {
                     if (!(argument is ArrayValue))
                     {
-                        throw new TemplateEvaluationException(
-                            $"Argument {i + 1} of function '{function.Name}' must be an array",
-                            context);
+                        throw new InnerEvaluationException($"Argument {i + 1} of function '{function.Name}' must be an array");
                     }
                     continue;
                 }
@@ -6113,9 +6461,8 @@ namespace TemplateInterpreter
                 // Check if the argument can be converted to the expected type
                 if (!parameter.Type.IsAssignableFrom(argumentType))
                 {
-                    throw new TemplateEvaluationException(
-                        $"Argument {i + 1} of function '{function.Name}' must be of type {parameter.Type.Name}",
-                        context);
+                    throw new InnerEvaluationException(
+                        $"Argument {i + 1} of function '{function.Name}' must be of type {parameter.Type.Name}");
                 }
             }
         }
@@ -6123,7 +6470,7 @@ namespace TemplateInterpreter
 
     public class TypeHelper
     {
-        public static bool UnboxBoolean(Value value, ExecutionContext context)
+        public static bool UnboxBoolean(Value value, ExecutionContext context, AstNode astNode)
         {
             if (value is BooleanValue booleanValue)
             {
@@ -6133,11 +6480,12 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(
                     $"Expected value of type boolean but found {value.GetType()}",
-                    context);
+                    context,
+                    astNode);
             }
         }
 
-        public static decimal UnboxNumber(Value value, ExecutionContext context)
+        public static decimal UnboxNumber(Value value, ExecutionContext context, AstNode astNode)
         {
             if (value is NumberValue booleanValue)
             {
@@ -6147,7 +6495,8 @@ namespace TemplateInterpreter
             {
                 throw new TemplateEvaluationException(
                     $"Expected value of type Number but found {value.GetType()}",
-                    context);
+                    context,
+                    astNode);
             }
         }
 
@@ -6300,9 +6649,8 @@ namespace TemplateInterpreter
             }
             else
             {
-                throw new TemplateEvaluationException(
-                    $"Expected value of type number but found {comparison.GetType()}",
-                    _context);
+                throw new InnerEvaluationException(
+                    $"Expected value of type number but found {comparison.GetType()}");
             }
         }
     }
