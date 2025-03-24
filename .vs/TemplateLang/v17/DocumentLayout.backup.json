@@ -1,0 +1,68 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{B5C3B4F0-36ED-4A0B-A21C-04EE1FC53238}|Interpreter.Tests\\Interpreter.Tests.csproj|C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\interpreter.tests\\interpretertests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B5C3B4F0-36ED-4A0B-A21C-04EE1FC53238}|Interpreter.Tests\\Interpreter.Tests.csproj|solutionrelative:interpreter.tests\\interpretertests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{43E30F59-0DF9-4BEE-827C-EC490E67D757}|Interpreter\\Interpreter.csproj|c:\\users\\john.m.dixon\\source\\repos\\templatelang\\interpreter\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{43E30F59-0DF9-4BEE-827C-EC490E67D757}|Interpreter\\Interpreter.csproj|solutionrelative:interpreter\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 1,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedHeight": 200,
+          "SelectedChildIndex": 2,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{aa2115a1-9712-457b-9047-dbb71ca2cdd2}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\Interpreter\\Program.cs",
+              "RelativeDocumentMoniker": "Interpreter\\Program.cs",
+              "ToolTip": "C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\Interpreter\\Program.cs",
+              "RelativeToolTip": "Interpreter\\Program.cs",
+              "ViewState": "AgIAACYOAAAAAAAAAAAwwDAOAAAVAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-02-19T06:24:53.659Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "InterpreterTests.cs",
+              "DocumentMoniker": "C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\Interpreter.Tests\\InterpreterTests.cs",
+              "RelativeDocumentMoniker": "Interpreter.Tests\\InterpreterTests.cs",
+              "ToolTip": "C:\\Users\\john.m.dixon\\source\\repos\\TemplateLang\\Interpreter.Tests\\InterpreterTests.cs",
+              "RelativeToolTip": "Interpreter.Tests\\InterpreterTests.cs",
+              "ViewState": "AgIAAPQPAAAAAAAAAAAEwAwQAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-01-15T02:50:10.136Z",
+              "EditorCaption": ""
+            }
+          ]
+        },
+        {
+          "DockedHeight": 200,
+          "SelectedChildIndex": -1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

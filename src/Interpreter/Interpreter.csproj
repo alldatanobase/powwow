@@ -6,7 +6,7 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{43E30F59-0DF9-4BEE-827C-EC490E67D757}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Interpreter</RootNamespace>
+    <RootNamespace>PowwowLang</RootNamespace>
     <AssemblyName>Interpreter</AssemblyName>
     <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
@@ -95,12 +95,73 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Ast\ArrayNode.cs" />
+    <Compile Include="Ast\AstNode.cs" />
+    <Compile Include="Ast\BinaryNode.cs" />
+    <Compile Include="Ast\BooleanNode.cs" />
+    <Compile Include="Ast\CaptureNode.cs" />
+    <Compile Include="Ast\FieldAccessNode.cs" />
+    <Compile Include="Ast\ForNode.cs" />
+    <Compile Include="Ast\FunctionReferenceNode.cs" />
+    <Compile Include="Ast\IfNode.cs" />
+    <Compile Include="Ast\IncludeNode.cs" />
+    <Compile Include="Ast\InvocationNode.cs" />
+    <Compile Include="Ast\LambdaNode.cs" />
+    <Compile Include="Ast\LetNode.cs" />
+    <Compile Include="Ast\LiteralNode.cs" />
+    <Compile Include="Ast\MutationNode.cs" />
+    <Compile Include="Ast\NewlineNode.cs" />
+    <Compile Include="Ast\NumberNode.cs" />
+    <Compile Include="Ast\ObjectCreationNode.cs" />
+    <Compile Include="Ast\StringNode.cs" />
+    <Compile Include="Ast\TemplateNode.cs" />
+    <Compile Include="Ast\TextNode.cs" />
+    <Compile Include="Ast\TypeNode.cs" />
+    <Compile Include="Ast\UnaryNode.cs" />
+    <Compile Include="Ast\VariableNode.cs" />
+    <Compile Include="Env\ExecutionContext.cs" />
+    <Compile Include="Env\LambdaExecutionContext.cs" />
+    <Compile Include="Exceptions\InitializationException.cs" />
+    <Compile Include="Exceptions\InnerEvaluationException.cs" />
+    <Compile Include="Exceptions\TemplateEvaluationException.cs" />
+    <Compile Include="Exceptions\TemplateParsingException.cs" />
+    <Compile Include="Lex\Lexer.cs" />
+    <Compile Include="Lex\SourceLocation.cs" />
+    <Compile Include="Lex\Token.cs" />
+    <Compile Include="Lex\TokenType.cs" />
+    <Compile Include="Lib\DataverseService.cs" />
+    <Compile Include="Lib\FunctionDefinition.cs" />
+    <Compile Include="Lib\FunctionRegistry.cs" />
+    <Compile Include="Lib\IDataverseService.cs" />
+    <Compile Include="Lib\ITemplateResolver.cs" />
+    <Compile Include="Lib\TemplateRegistry.cs" />
+    <Compile Include="Lib\ParameterDefinition.cs" />
+    <Compile Include="Parse\Parser.cs" />
+    <Compile Include="Runtime\Interpreter.cs" />
+    <Compile Include="Types\LazyValue.cs" />
+    <Compile Include="Types\ArrayValue.cs" />
+    <Compile Include="Types\BooleanValue.cs" />
+    <Compile Include="Types\DateTimeValue.cs" />
+    <Compile Include="Types\LambdaValue.cs" />
+    <Compile Include="Types\NumberValue.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Ast\WhitespaceNode.cs" />
+    <Compile Include="Types\Box.cs" />
+    <Compile Include="Types\FunctionReferenceValue.cs" />
+    <Compile Include="Types\ObjectValue.cs" />
+    <Compile Include="Types\StringValue.cs" />
+    <Compile Include="Types\TypeHelper.cs" />
+    <Compile Include="Types\TypeValue.cs" />
+    <Compile Include="Types\Value.cs" />
+    <Compile Include="Types\ValueComparer.cs" />
+    <Compile Include="Types\ValueFactory.cs" />
+    <Compile Include="Types\ValueType.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

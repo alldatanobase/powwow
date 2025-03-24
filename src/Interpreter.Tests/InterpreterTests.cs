@@ -8,8 +8,13 @@ using Moq;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System.Text.RegularExpressions;
+using PowwowLang.Lib;
+using PowwowLang.Runtime;
+using PowwowLang.Lex;
+using PowwowLang.Exceptions;
+using PowwowLang.Types;
 
-namespace TemplateInterpreter.Tests
+namespace PowwowLang.Tests
 {
     [TestFixture]
     public class InterpreterTests
