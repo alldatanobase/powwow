@@ -56,6 +56,10 @@ namespace PowwowLang.Types
             {
                 return new Value(new DateTimeValue(value));
             }
+            else if (value is ValueType)
+            {
+                return new Value(new TypeValue(value));
+            }
             else if (value is object)
             {
                 IDictionary<string, Value> valueObj = new Dictionary<string, Value>();

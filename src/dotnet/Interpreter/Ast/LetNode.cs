@@ -21,13 +21,25 @@ namespace PowwowLang.Ast
             var value = _expression.Evaluate(context);
             try
             {
-                context.DefineVariable(_variableName, value);
+                var type = value.TypeOf();
+                if (type == ValueType.Number || 
+                    type == ValueType.String || 
+                    type == ValueType.Boolean ||
+                    type == ValueType.Type)
+                {
+                    Value valueCopy = ValueFactory.Create(value.ValueOf().Unbox());
+                    context.DefineVariable(_variableName, valueCopy);
+                }
+                else
+                {
+                    context.DefineVariable(_variableName, value);
+                }
             }
             catch (InnerEvaluationException ex)
             {
                 throw new TemplateEvaluationException(ex.Message, context, this);
             }
-            return new Value(new StringValue(string.Empty)); // Let statements don't produce outpu)t
+            return new Value(new StringValue(string.Empty)); // Let statements don't produce output
         }
 
         public override string Name()

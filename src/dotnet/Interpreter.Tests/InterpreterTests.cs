@@ -4972,5 +4972,84 @@ string";
             StringAssert.Contains("Expected <directiveend> but got <variable>", exception.InnerExceptions[1].Message);
             StringAssert.Contains("Expected comma between function arguments or a closing parenthesis: Expected <comma> but got <directiveend>", exception.InnerExceptions[2].Message);
         }
+
+        [Test]
+        public void DivisionByZero()
+        {
+            // Arrange
+            string template = @"{{ 1 / 0 }}";
+
+            // Act && Assert
+            var exception = Assert.Throws<TemplateEvaluationException>(() => {
+                _interpreter.Interpret(template, _emptyData);
+            });
+
+            StringAssert.Contains("Cannot divide by zero", exception.Message);
+        }
+
+        [Test]
+        public void NumbersAreAssignedByValue()
+        {
+            // Arrange
+            string template = @"{{ let x = 1 }}{{ let y = x }}{{ mut y = 2 }}{{ y }} {{ x }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("2 1"));
+        }
+
+        [Test]
+        public void StringsAreAssignedByValue()
+        {
+            // Arrange
+            string template = @"{{ let x = ""abc"" }}{{ let y = x }}{{ mut y = ""def"" }}{{ y }} {{ x }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("def abc"));
+        }
+
+        [Test]
+        public void BooleansAreAssignedByValue()
+        {
+            // Arrange
+            string template = @"{{ let x = false }}{{ let y = x }}{{ mut y = true }}{{ y }} {{ x }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("true false"));
+        }
+
+        [Test]
+        public void TypesAreAssignedByValue()
+        {
+            // Arrange
+            string template = @"{{ let x = Number }}{{ let y = x }}{{ mut y = String }}{{ y }} {{ x }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("type<String> type<Number>"));
+        }
+
+        [Test]
+        public void ObjectsAreAssignedByReference()
+        {
+            // Arrange
+            string template = @"{{ let x = obj(a: 1, b: 2) }}{{ let y = x }}{{ mut y.a = 3 }}{{ y.a }} {{ x.a }}";
+
+            // Act
+            string result = _interpreter.Interpret(template, _emptyData);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("3 3"));
+        }
     }
 }

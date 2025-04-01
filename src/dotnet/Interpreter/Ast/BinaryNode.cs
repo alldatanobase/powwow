@@ -50,6 +50,13 @@ namespace PowwowLang.Ast
                 case TokenType.Multiply:
                     return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) * TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.Divide:
+                    if (right.ValueOf() is NumberValue rightValue && rightValue.Value() == 0)
+                    {
+                        throw new TemplateEvaluationException(
+                            $"Cannot divide by zero",
+                            context,
+                            this);
+                    }
                     return new Value(new NumberValue(TypeHelper.UnboxNumber(left, context, _left) / TypeHelper.UnboxNumber(right, context, _right)));
                 case TokenType.LessThan:
                     return new Value(new BooleanValue(TypeHelper.UnboxNumber(left, context, _left) < TypeHelper.UnboxNumber(right, context, _right)));
