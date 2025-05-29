@@ -36,7 +36,7 @@ namespace PowwowLang.Lib
                     if (attribute.Value != null)
                     {
                         // Handle special types like EntityReference, OptionSetValue, etc.
-                        var value = ConvertAttributeValue(attribute.Value);
+                        var value = ConvertAttributeValue(entity, attribute.Key, attribute.Value);
                         if (value != null)
                         {
                             dict[attribute.Key] = value;
@@ -50,7 +50,7 @@ namespace PowwowLang.Lib
             return new Value(new ArrayValue(dicts));
         }
 
-        private Value ConvertAttributeValue(object attributeValue)
+        private Value ConvertAttributeValue(Entity entity, string attributeName, object attributeValue)
         {
             if (attributeValue == null) return null;
 
@@ -63,13 +63,17 @@ namespace PowwowLang.Lib
                     return new Value(new StringValue(guid.ToString()));
 
                 case OptionSetValue optionSet:
-                    return new Value(new NumberValue(Convert.ToDecimal(optionSet.Value)));
+                    return new Value(new ObjectValue(new Dictionary<string, Value>()
+                    {
+                        { "value", new Value(new NumberValue(Convert.ToDecimal(optionSet.Value))) },
+                        { "label", new Value(new StringValue(entity.FormattedValues[attributeName])) },
+                    }));
 
                 case Money money:
                     return new Value(new NumberValue(money.Value));
 
                 case AliasedValue aliased:
-                    return ConvertAttributeValue(aliased.Value);
+                    return ConvertAttributeValue(entity, attributeName, aliased.Value);
 
                 case string str:
                     return new Value(new StringValue(str));

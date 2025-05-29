@@ -2139,14 +2139,18 @@ Line 3
             var fetchXml = "<fetch><entity name='account'><attribute name='primarycontactid' /><attribute name='accountcategorycode' /><attribute name='revenue' /></entity></fetch>";
             var contactId = Guid.NewGuid();
 
+            Entity entity = new Entity("account")
+            {
+                ["primarycontactid"] = new EntityReference("contact", contactId),
+                ["accountcategorycode"] = new OptionSetValue(1),
+                ["revenue"] = new Money(1000.50m)
+            };
+
+            entity.FormattedValues["accountcategorycode"] = "First";
+
             var entityCollection = new EntityCollection(new List<Entity>
             {
-                new Entity("account")
-                {
-                    ["primarycontactid"] = new EntityReference("contact", contactId),
-                    ["accountcategorycode"] = new OptionSetValue(1),
-                    ["revenue"] = new Money(1000.50m)
-                }
+                entity
             });
 
             _mockOrgService
@@ -2157,13 +2161,17 @@ Line 3
             var template = @"{{ let accounts = fetch(""" + fetchXml + @""") }}
                            Contact: {{ first(accounts).primarycontactid }}
                            Category: {{ first(accounts).accountcategorycode }}
+                           Category Value: {{ first(accounts).accountcategorycode.value }}
+                           Category Label: {{ first(accounts).accountcategorycode.label }}
                            Revenue: {{ first(accounts).revenue }}";
             var result = _interpreter.Interpret(template, new ExpandoObject());
 
             // Assert
             StringAssert.Contains(contactId.ToString(), result);
-            StringAssert.Contains("1", result); // OptionSetValue
-            StringAssert.Contains("1000.50", result); // Money value
+            StringAssert.Contains("Category: {value: 1, label: First}", result); // OptionSetValue
+            StringAssert.Contains("Category Value: 1", result); // OptionSetValue
+            StringAssert.Contains("Category Label: First", result); // OptionSetValue
+            StringAssert.Contains("Revenue: 1000.50", result); // Money value
         }
 
         [Test]
